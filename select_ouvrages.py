@@ -11,12 +11,22 @@ class OuvragesSelector:
         self.ponts_gdf = get_ponts(self.filter_route, "BDTOPO_V3:construction_surfacique")
         self.ponts2_gdf = get_ponts(self.filter_route, "BDTOPO_V3:construction_lineaire")
 
+        # géométrie globale de la route
+        route_geom = self.ouvrages_gdf.unary_union
+
+        #  buffer zone autour de la route
+        buffer_distance = 10
+
+        #  filtre spatial
+        self.ponts_gdf = self.ponts_gdf[self.ponts_gdf.intersects(route_geom.buffer(buffer_distance))]
+        self.ponts2_gdf = self.ponts2_gdf[self.ponts2_gdf.intersects(route_geom.buffer(buffer_distance))]
+
     def merge_close_segments(self, gdf):
             if len(gdf) <= 1:
                 return gdf
                 
             # Create buffer around segments
-            buffered = gdf.geometry.buffer(5)  # 5m buffer to detect 10m gaps
+            buffered = gdf.geometry.buffer(15)  # 5m buffer to detect 10m gaps
             
             # Dissolve overlapping buffers
             merged = buffered.unary_union
@@ -82,6 +92,7 @@ class OuvragesSelector:
         selected_ouvrages.loc[:,'geometry'] = selected_ouvrages['geometry'].apply(lambda x: self.remove_overlapping_zones(x, self.ponts2_gdf))
         selected_ouvrages = selected_ouvrages[~selected_ouvrages.is_empty]
         
+        
         # Create separate GeoDataFrames for remblai and deblai
         remblai = selected_ouvrages[selected_ouvrages['classification'] == 'remblai']
         deblai = selected_ouvrages[selected_ouvrages['classification'] == 'deblai']
@@ -99,13 +110,21 @@ class OuvragesSelector:
         selected_ouvrages = merged_ouvrages[merged_ouvrages.geometry.length > 20]
         
         return selected_ouvrages
-
+    
     def save_output(self, selected_gdf):
         # Create output folder if it doesn't exist
         os.makedirs(self.output_folder, exist_ok=True)
+
         output_file = os.path.join(self.output_folder, "selected_ouvrages.gpkg")
-        
-        # Save segments
-        selected_gdf.to_file(output_file, driver='GPKG', layer='ouvrages')
-        
-        print(f"Ouvrages saved as: {output_file}")
+        selected_gdf.to_file(output_file, driver='GPKG', layer='ouvrages') 
+        # ponts surface 
+        self.ponts_gdf.to_file(
+            os.path.join(self.output_folder, "ponts_surface.gpkg"),
+            driver='GPKG'
+        )
+
+        #  ponts lineaire 
+        self.ponts2_gdf.to_file(
+            os.path.join(self.output_folder, "ponts_lineaire.gpkg"),
+            driver='GPKG'
+        )
