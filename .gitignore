@@ -1,0 +1,8 @@
+output*/
+
+data/
+
+bounding_box1.gpgk
+bounding_box2.gpgk
+
+__pycache__/
