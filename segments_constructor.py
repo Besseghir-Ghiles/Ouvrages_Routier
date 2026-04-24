@@ -210,6 +210,25 @@ class SegmentConstructor:
                                     break
 
                                 if closest_row_j['classification'] != profile_type:
+
+                                    change_point = list_points[-1]
+
+                                    if not hasattr(self, "break_points"):
+                                        self.break_points = []
+
+                                    if not hasattr(self, "last_break_point") or \
+                                    self.calculate_distance(self.last_break_point, change_point) > 5:
+
+                                        self.break_points.append({
+                                            "geometry": change_point,
+                                            "class_from": profile_type,
+                                            "class_to": closest_row_j['classification'],
+                                            "gap_distance": min_distance_j,
+                                            "type": "changement_classification"
+                                        })
+
+                                        self.last_break_point = change_point
+
                                     break
 
                                 hauteur = closest_row_j['max_height_difference']
@@ -341,6 +360,19 @@ class SegmentConstructor:
 
         print(f"Lignes route sauvegardées ici : {output_lines}")
 
+        if hasattr(self, "break_points"):
+            self.break_points_gdf = gpd.GeoDataFrame(
+                self.break_points,
+                geometry="geometry",
+                crs=self.current_crs
+            )
+        else:
+            self.break_points_gdf = gpd.GeoDataFrame(
+                columns=["geometry"],
+                geometry="geometry",
+                crs=self.current_crs
+            )
+
         ##############
 
         return ouvrages_gdf
@@ -353,5 +385,11 @@ class SegmentConstructor:
         
         # Save segments
         ouvrages_gdf.to_file(output_file, driver='GPKG', layer='segments')
+
+        if hasattr(self, "break_points_gdf") and not self.break_points_gdf.empty:
+            self.break_points_gdf.to_file(
+                os.path.join(self.output_folder, "break_points.gpkg"),
+                driver="GPKG"
+    )
         
         print(f"Ouvrage segments saved as: {output_file}")

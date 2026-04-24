@@ -8,7 +8,7 @@ import numpy as np
 import logging
 import matplotlib.pyplot as plt
 from get_data_functions import get_data, get_mnt
-
+import pandas as pd
 class ProfileAnalyzer:
     """
     Class to analyze profiles along a route and classify them as remblai, deblai or rasant
@@ -687,7 +687,7 @@ class ProfileAnalyzer:
         
         # Save R² scores to CSV
         r2_output_file = os.path.join(self.output_folder, f"r2_scores_{self.route_number}.csv")
-        import pandas as pd
+        
         r2_df = pd.DataFrame(self.r2_scores)
         r2_df.to_csv(r2_output_file, index=False)
         print(f"R² scores saved to: {r2_output_file}")
