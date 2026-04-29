@@ -15,7 +15,7 @@ class SegmentConstructor:
         self.route_number = route_number
         self.filter_route = f"numero='{route_number}'"
         self.route = lines_selected
-        #self.route = get_data(self.filter_route, "BDTOPO_V3:route_numerotee_ou_nommee", self.current_bounds)
+
         self.filter_PR = f"route='{route_number}'"
         self.PR_route = get_data(self.filter_PR, "BDTOPO_V3:point_de_repere", self.current_bounds)
         
@@ -137,6 +137,7 @@ class SegmentConstructor:
     def construct_segments(self):
         all_ouvrages = []
         start_time = time.time()
+        gap_lines = []
 
         print("Début de construct_segments()")
         print(f"Nombre de points dans classified_profiles: {len(self.classified_profiles)}")
@@ -200,6 +201,8 @@ class SegmentConstructor:
 
                             hauteurs = []
                             pentes = []
+                            gap_count = 0
+                            max_gap = 5
 
                             while j < max_search and iteration_count < max_iterations:
 
@@ -211,13 +214,23 @@ class SegmentConstructor:
 
                                 if closest_row_j['classification'] != profile_type:
 
-                                    change_point = list_points[-1]
+                                    #  calcul longueur du trou
+                                    gap_length = self.calculate_distance(list_points[-1], pointj_geo)
 
-                                    if not hasattr(self, "break_points"):
-                                        self.break_points = []
+                                    #  éviter les gros trous
+                                    if gap_length > 15:   
+                                        break
 
-                                    if not hasattr(self, "last_break_point") or \
-                                    self.calculate_distance(self.last_break_point, change_point) > 5:
+                                    opposite_class = self.get_opposite_class(line, j)
+
+                                    #if opposite_class is not None and profile_type in opposite_class:
+                                    if opposite_class is not None:
+
+                                        # detecte changement
+                                        change_point = list_points[-1]
+
+                                        if not hasattr(self, "break_points"):
+                                            self.break_points = []
 
                                         self.break_points.append({
                                             "geometry": change_point,
@@ -226,12 +239,40 @@ class SegmentConstructor:
                                             "gap_distance": min_distance_j,
                                             "type": "changement_classification"
                                         })
+                                        
 
-                                        self.last_break_point = change_point
+                                        # si plusieurs classes prendre la première ou dominante
+                                        if isinstance(opposite_class, list):
+                                            from collections import Counter
+                                            forced_class = Counter(opposite_class).most_common(1)[0][0]
+                                        else:
+                                            forced_class = opposite_class
+
+                                        gap_lines.append({
+                                            "geometry": LineString([list_points[-1], pointj_geo]),
+                                            "classification": forced_class,
+                                            "class_original": closest_row_j['classification'],
+                                            "class_corrected": forced_class,
+                                            "length": self.calculate_distance(list_points[-1], pointj_geo),
+                                            "type": "gap_filled"
+                                        })
+
+                                        gap_count += 1
+
+                                        if gap_count > max_gap:
+                                            break
+
+
+
+                                        list_points.append(pointj_geo)
+                                        j += 1
+                                        continue
 
                                     break
 
+
                                 hauteur = closest_row_j['max_height_difference']
+                                gap_count = 0
                                 hauteurs.append(hauteur)
 
                                 if closest_row_j['slope_ouvrage_section'] is not None:
@@ -373,9 +414,74 @@ class SegmentConstructor:
                 crs=self.current_crs
             )
 
-        ##############
+        if gap_lines:
+            self.gap_lines_gdf = gpd.GeoDataFrame(
+                gap_lines,
+                geometry="geometry",
+                crs=self.current_crs
+            )
 
         return ouvrages_gdf
+
+    def get_opposite_class(self, line, distance):
+
+        # point courant
+        current_point = line.interpolate(distance)
+
+        # vraie perpendiculaire
+        perp = self.calculate_perpendicular_line(distance, line)
+
+        for geom in self.route.geometry:
+
+            # ignorer la même ligne
+            if geom.equals(line):
+                continue
+
+            # intersection avec l'autre voie
+            inter = perp.intersection(geom)
+
+            if inter.is_empty:
+                continue
+
+            # gérer les cas géométriques
+            if inter.geom_type == "Point":
+                target_point = inter
+
+            elif inter.geom_type == "MultiPoint":
+                # prendre le point le plus proche du centre
+                target_point = min(
+                    list(inter.geoms),
+                    key=lambda p: p.distance(current_point)
+                )
+
+            else:
+                continue
+
+            # récupérer le profil le plus proche de ce point
+            row, dist = self.determine_closest_point(target_point)
+
+            if row is not None and dist < 20:
+                return row["classification"]
+
+        return None
+
+    def calculate_perpendicular_line(self, current_distance, line):
+        current_point = line.interpolate(current_distance)
+
+        if current_distance <= 15:
+            next_point = line.interpolate(current_distance + 10)
+            angle = math.atan2(next_point.y - current_point.y, next_point.x - current_point.x)
+        else:
+            prev_point = line.interpolate(current_distance - 10)
+            angle = math.atan2(current_point.y - prev_point.y, current_point.x - prev_point.x)
+
+        dx = 60 * math.cos(angle + math.pi / 2)
+        dy = 60 * math.sin(angle + math.pi / 2)
+
+        start_point = (current_point.x - dx, current_point.y - dy)
+        end_point = (current_point.x + dx, current_point.y + dy)
+
+        return LineString([start_point, end_point])
 
     def save_output(self, ouvrages_gdf):
         # Create output folder if it doesn't exist
@@ -391,5 +497,11 @@ class SegmentConstructor:
                 os.path.join(self.output_folder, "break_points.gpkg"),
                 driver="GPKG"
     )
+            
+        if hasattr(self, "gap_lines_gdf") and not self.gap_lines_gdf.empty:
+            self.gap_lines_gdf.to_file(
+                os.path.join(self.output_folder, "gap_corrections.gpkg"),
+                driver="GPKG"
+            )
         
         print(f"Ouvrage segments saved as: {output_file}")
