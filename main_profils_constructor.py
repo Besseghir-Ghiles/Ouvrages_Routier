@@ -9,6 +9,7 @@ from get_data_functions import get_data, get_mnt
 from tqdm import tqdm
 import os
 import math
+from shapely.ops import snap
 import matplotlib.pyplot as plt
 
 def connect_segments(route, buffer_distance=5):
@@ -76,9 +77,9 @@ def connect_segments(route, buffer_distance=5):
         merged_lines.append(LineString(coords))
     ######  
     # Buffer and merge the linestrings
-    print("\nCreating buffer and centerline...")
-    buffered_lines = [line.buffer(250) for line in merged_lines]
-    merged_polygon = unary_union(buffered_lines)
+    #print("\nCreating buffer and centerline...")  
+    ##buffered_lines = [line.buffer(250) for line in merged_lines] 
+    ##merged_polygon = unary_union(buffered_lines)
 
     #buffered_gdf = gpd.GeoDataFrame({'geometry': buffered_lines}, crs=route.crs)
     #buffered_gdf.to_file("buffered_lines.gpkg", driver="GPKG")
@@ -89,11 +90,19 @@ def connect_segments(route, buffer_distance=5):
     #print("merged_polygon saved to merged_polygon.gpkg")
     
     #centerline = Centerline(merged_polygon)
-    centerline = pygeoops.centerline(merged_polygon, simplifytolerance=0)
+    ##centerline = pygeoops.centerline(merged_polygon, simplifytolerance=0)  
 
     #centerline_gdf = gpd.GeoDataFrame({'geometry': [centerline]}, crs=route.crs)
     #centerline_gdf.to_file("centerline_gdf.gpkg", driver="GPKG")
     #print("centerline_gdf saved to centerline_gdf.gpkg")
+    
+
+    merged = linemerge(merged_lines)
+
+    if merged.geom_type == "MultiLineString":
+        centerline = max(merged.geoms, key=lambda l: l.length)
+    else:
+        centerline = merged
         
     return centerline
 
@@ -127,6 +136,7 @@ def calculate_perpendicular_line(current_distance, line):
         perpendicular_line = LineString([start_point, end_point])
 
         return perpendicular_line
+
 
 def get_raster_value(point):
         """Get the elevation value from the raster at a given point"""
@@ -252,8 +262,26 @@ def visualize_profile(perpendicular_line, segment, current_distance, output_fold
     y_max = middle_value + 20
 
     point_on_route = shapely.intersection(perpendicular_line, segment)
+    ##
+    if point_on_route.is_empty:
+        print("Intersection vide")
+        return
+
+    if point_on_route.geom_type == "MultiPoint":
+        center = perpendicular_line.interpolate(perpendicular_line.length / 2)
+        point_on_route = min(point_on_route.geoms, key=lambda p: p.distance(center))
+
+    if point_on_route.geom_type != "Point":
+        print(f"Type inattendu : {point_on_route.geom_type}")
+        return
+    
     print(f"Point on route: {point_on_route}")
     PR_before = find_closest_PR(point_on_route, PR_route)
+    ##
+    if PR_before is None:
+        print("Aucun PR trouvé")
+        return
+    
     print(f"PR before: {PR_before['numero']}")
     PR_before_on_route = shapely.ops.nearest_points(segment, PR_before.geometry)[0]
     print(f"PR before on route: {PR_before_on_route}")
@@ -283,7 +311,75 @@ def visualize_profile(perpendicular_line, segment, current_distance, output_fold
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
 
-    print(f"\nProfile visualization saved: {output_file}")
+    print(f"\nProfile visualization saved: {output_file}")  
+
+###
+def build_clean_centerline(lines_selected, step=5):
+    lines = []
+
+    for geom in lines_selected.geometry:
+        if geom is None or geom.is_empty:
+            continue
+
+        if geom.geom_type == "LineString":
+            lines.append(geom)
+
+        elif geom.geom_type == "MultiLineString":
+            lines.extend(list(geom.geoms))
+
+    print("Morceaux LineString trouvés :", len(lines))
+
+    if len(lines) < 2:
+        raise ValueError("Pas assez de lignes pour créer la centerline.")
+
+    # fusionner les petits morceaux de lignes
+    union = unary_union(lines)
+
+    # snap pour recoller les petits écarts entre tronçons
+    snapped_lines = [snap(line, union, 5) for line in lines]
+
+    merged = linemerge(unary_union(snapped_lines))
+
+    if merged.geom_type == "LineString":
+        raise ValueError("Une seule voie détectée, impossible de faire le milieu entre 2 voies.")
+
+    merged_lines = list(merged.geoms)
+
+    print("Lignes fusionnées :", len(merged_lines))
+
+    # prendre les deux voies complètes les plus longues
+    merged_lines = sorted(merged_lines, key=lambda l: l.length, reverse=True)
+
+    # selection des deux chaussés 
+    line1 = merged_lines[0]
+    line2 = merged_lines[1]
+
+    print("Longueur voie 1 :", line1.length)
+    print("Longueur voie 2 :", line2.length)
+
+    # remettre dans le même sens( si les sens sont inversés , on inverse l'orde des coordonnées)
+    if Point(line1.coords[0]).distance(Point(line2.coords[0])) > Point(line1.coords[0]).distance(Point(line2.coords[-1])):
+        line2 = LineString(list(line2.coords)[::-1])
+
+    # nombre de point a générer 
+    n = int(min(line1.length, line2.length) / step)
+
+    points = []
+
+    for i in range(n + 1):
+        t = i / n
+
+        p1 = line1.interpolate(t, normalized=True)
+        p2 = line2.interpolate(t, normalized=True)
+
+        points.append(Point(
+            (p1.x + p2.x) / 2,
+            (p1.y + p2.y) / 2
+        ))
+
+    return LineString(points)
+
+
 
 def main():
     route_number = input("Saisissez le code de la route (ex. A33): ")
@@ -303,13 +399,52 @@ def main():
     with rasterio.open("data/mnt.tif") as src:
         print(f"DEM bounds: {src.bounds}")
         bbox = src.bounds
+    ##
+    filter_route_lines = f"cpx_numero='{route_number}'"
+    lines_selected = get_data(filter_route_lines, "BDTOPO_V3:troncon_de_route", bbox)
+    lines_selected = lines_selected.explode(index_parts=False)
+    lines_selected = lines_selected.reset_index(drop=True)
+
+    
+    #lines_selected = lines_selected[lines_selected['nature'] == 'Type autoroutier']
+    lines_selected = lines_selected[
+    lines_selected['nature'].isin([
+        'Type autoroutier',
+        'Route à 2 chaussées',
+        'Route à 1 chaussée'
+    ])
+]
+    print("Après filtre nature :", len(lines_selected))
+    print(lines_selected.geom_type.value_counts())
+    print(lines_selected[["nature", "geometry"]])
 
     filter_PR = f"route='{route_number}'"
     PR_route = get_data(filter_PR, "BDTOPO_V3:point_de_repere", bbox)
+    # récupérer PR start et end AVANT centerline
+    PR_start_df = PR_route[PR_route['numero'] == segment_start_PR]
+    PR_end_df = PR_route[PR_route['numero'] == segment_end_PR]
+
+    if PR_start_df.empty or PR_end_df.empty:
+        print("PR introuvables")
+        return
+
+    PR_start = PR_start_df.geometry.iloc[0]
+    PR_end = PR_end_df.geometry.iloc[0]
+
+    #  FILTRAGE SPATIAL
+    zone = PR_start.buffer(1000).union(PR_end.buffer(1000))
+
+    lines_selected = lines_selected[
+        lines_selected.intersects(zone)
+    ]
+
+    print(f"Lignes après filtrage spatial : {len(lines_selected)}")
     
     # Get connected segments and centerline
-    centerline = connect_segments(route)
-    
+    #centerline = connect_segments(route)
+    centerline = build_clean_centerline(
+        lines_selected
+    )
     # Ensure centerline is a LineString
     if isinstance(centerline, shapely.geometry.MultiLineString):
         # Take the longest LineString from the MultiLineString
@@ -327,10 +462,6 @@ def main():
     output_centerline = os.path.join(output_folder, f"centerline_{route_number}.gpkg")
     route_buffered.to_file(output_centerline, driver="GPKG")
     print(f"\nCenterline has been saved to: {output_centerline}")
-
-    # Get PR points and handle potential missing data
-    PR_start_df = PR_route[PR_route['numero'] == segment_start_PR]
-    PR_end_df = PR_route[PR_route['numero'] == segment_end_PR]
 
     # Check if we found the PR points
     if not PR_start_df.empty and not PR_end_df.empty:
