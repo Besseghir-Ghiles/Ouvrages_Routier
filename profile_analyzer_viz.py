@@ -624,6 +624,7 @@ class ProfileAnalyzer:
                 max_height_difference = None
                 slope_ouvrage_total = None
                 slope_ouvrage_section = None
+                slope_ouvrage_middle = None
                 calculation_points = None
 
                 if profile_type == "deblai":

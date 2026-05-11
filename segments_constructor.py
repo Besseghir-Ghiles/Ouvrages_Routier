@@ -5,6 +5,7 @@ import math
 from tqdm import tqdm
 import time
 from get_data_functions import get_data
+from collections import Counter
 
 class SegmentConstructor:
     def __init__(self, classified_profiles, output_folder, route_number, lines_selected):
@@ -18,7 +19,6 @@ class SegmentConstructor:
 
         self.filter_PR = f"route='{route_number}'"
         self.PR_route = get_data(self.filter_PR, "BDTOPO_V3:point_de_repere", self.current_bounds)
-        
         # Créer un index spatial pour accélérer la recherche de points
         print("Création de l'index spatial...")
         self.spatial_index = self.classified_profiles.sindex
@@ -170,7 +170,22 @@ class SegmentConstructor:
                 PR_current = self.PR_route[self.PR_route.geometry.intersects(line_buffer)]
                 """ 
                 PR_current = self.PR_route
-                print(f"Nombre de points de repère dans la ligne {index+1}.{line_idx+1}: {len(PR_current)}")
+                
+                #print(f"Nombre de points de repère dans la ligne {index+1}.{line_idx+1}: {len(PR_current)}")
+                PR_current = self.PR_route
+
+                print("\n===== DEBUG PR_current =====")
+                print("Type:", type(PR_current))
+
+                if PR_current is None:
+                    print("PROBLÈME DE CHARGEMENT")
+                    continue
+
+                if PR_current.empty:
+                    print(" aucun PR dans cette zone")
+                    continue
+
+                print(f"Nombre de PR: {len(PR_current)}")
 
                 with tqdm(total=int(length_line), desc=f"Processing Line {index+1}.{line_idx+1}") as pbar:
 
@@ -242,8 +257,7 @@ class SegmentConstructor:
                                         
 
                                         # si plusieurs classes prendre la première ou dominante
-                                        if isinstance(opposite_class, list):
-                                            from collections import Counter
+                                        if isinstance(opposite_class, list):                                                    
                                             forced_class = Counter(opposite_class).most_common(1)[0][0]
                                         else:
                                             forced_class = opposite_class
