@@ -25,8 +25,7 @@ def get_data(filter, type_of_data, bbox):
             content = response.json()
             
             # Create GeoDataFrame from the GeoJSON
-            gdf = gpd.GeoDataFrame.from_features(content['features'])
-            
+            gdf = gpd.GeoDataFrame.from_features(content['features'])            
             # Explicitly set the CRS to Lambert-93
             gdf.set_crs(epsg=2154, inplace=True)
 
@@ -35,6 +34,7 @@ def get_data(filter, type_of_data, bbox):
             save_bbox_as_geopackage(bbox, "bounding_box1.gpkg")
             print(f"GeoDataFrame bounds: {gdf.total_bounds}")
             if bbox:
+                """ 
                 print(f"Bounding box: {bbox}")
                 minx, miny, maxx, maxy = bbox
                 minx += 100
@@ -44,7 +44,37 @@ def get_data(filter, type_of_data, bbox):
                 bbox_geom = box(minx, miny, maxx, maxy)
                 gdf = gpd.clip(gdf, bbox_geom)
                 print(f"Filtered GeoDataFrame bounds: {gdf.total_bounds}")
-                save_bbox_as_geopackage(gdf.total_bounds, "bounding_box2.gpkg")
+                """
+            if bbox:
+                print("\n===== DEBUG BBOX =====")
+                print("BBox originale:", bbox)
+
+                minx, miny, maxx, maxy = bbox
+                minx += 100
+                miny += 100
+                maxx -= 100
+                maxy -= 100
+
+                print("BBox modifiée:", (minx, miny, maxx, maxy))
+                if minx >= maxx or miny >= maxy:
+                    print(" BBOX invalide après réduction  on annule le clip")
+                else:
+
+                    print("\n===== DEBUG CLIP =====")
+                    print("Nombre AVANT clip:", len(gdf))
+                    print("Bounds AVANT:", gdf.total_bounds)
+
+                    bbox_geom = box(minx, miny, maxx, maxy)
+
+                    gdf = gpd.clip(gdf, bbox_geom)
+
+                    print("Nombre APRÈS clip:", len(gdf))
+                    print("Bounds APRÈS:", gdf.total_bounds)
+                    print("Empty ?", gdf.empty)
+
+                    print("\n===== DEBUG VALIDITÉ =====")
+                    print("Géométries valides ?", gdf.is_valid.all())
+                    save_bbox_as_geopackage(gdf.total_bounds, "bounding_box2.gpkg")
 
             return gdf
             
@@ -57,84 +87,33 @@ def get_data(filter, type_of_data, bbox):
 
     return None
 
-def get_ponts(filter, type_of_data):
-    """
-    Fetch bridges from the WFS service
-    """
+def get_ponts_from_geom(route_geom, type_of_data):
     url = "https://data.geopf.fr/wfs/ows"
 
-    # Get road geometry
-    road_params = {
+    buffer = route_geom.buffer(1000)
+    minx, miny, maxx, maxy = buffer.bounds
+
+    params = {
         "SERVICE": "WFS",
         "REQUEST": "GetFeature",
         "VERSION": "2.0.0",
-        "TYPENAMES": "BDTOPO_V3:route_numerotee_ou_nommee",
+        "TYPENAMES": type_of_data,
         "OUTPUTFORMAT": "application/json",
-        "CQL_FILTER": filter,
+        "BBOX": f"{minx},{miny},{maxx},{maxy},EPSG:2154",
         "SRSNAME": "EPSG:2154"
     }
 
-    road_response = requests.get(url, params=road_params)
-    print(f"Road response status: {road_response.status_code}")
+    response = requests.get(url, params=params)
+    print("Bridge status:", response.status_code)
 
-    if road_response.status_code == 200:
-        try:
-            # Get first geometry and create buffer
-            road_content = road_response.json()
-            first_geometry = shape(road_content['features'][0]['geometry'])
-            buffer = first_geometry.buffer(1000)  # 1km buffer
-            minx, miny, maxx, maxy = buffer.bounds
-            print(f"Buffer bounds: minX={minx:.2f}, minY={miny:.2f}, maxX={maxx:.2f}, maxY={maxy:.2f}")
+    if response.status_code != 200:
+        return None
 
-            # Create correct polygon syntax for CQL filter
-            my_filter = f"{minx}, {miny}, {maxx}, {maxy}, EPSG:2154"
+    data = response.json()
+    gdf = gpd.GeoDataFrame.from_features(data["features"])
+    gdf.set_crs(epsg=2154, inplace=True)
 
-            # Search for bridges within buffer
-            bridge_params = {
-                "SERVICE": "WFS",
-                "REQUEST": "GetFeature",
-                "VERSION": "2.0.0",
-                "TYPENAMES": type_of_data,
-                "OUTPUTFORMAT": "application/json",
-                "bbox": my_filter,
-                "SRSNAME": "EPSG:2154"
-            }
-            
-            bridge_response = requests.get(url, params=bridge_params)
-            print(f"Bridge response status: {bridge_response.status_code}")
-            print(f"Bridge response URL: {bridge_response.url}")
-            
-            if bridge_response.status_code == 200:
-                try:
-                    content = bridge_response.json()
-                    
-                    # Create GeoDataFrame from the GeoJSON
-                    gdf = gpd.GeoDataFrame.from_features(content['features'])
-                    
-                    # Explicitly set the CRS to Lambert-93
-                    gdf.set_crs(epsg=2154, inplace=True)
-
-                    # Select the features with nature 'Pont'
-                    gdf = gdf[gdf['nature'] == 'Pont']
-
-                    return gdf
-            
-                except requests.exceptions.JSONDecodeError as e:
-                    print(f"Failed to parse JSON: {e}")
-                except Exception as e:
-                    print(f"An error occurred: {e}")
-            else:
-                print(f"Bridge request failed with status code: {bridge_response.status_code}")
-                    
-        except requests.exceptions.JSONDecodeError as e:
-            print(f"Failed to parse JSON: {e}")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            print(f"Error type: {type(e)}")
-    else:
-        print(f"Initial road request failed with status code: {road_response.status_code}")
-
-    return None
+    return gdf
 
 def get_mnt(bbox_values, data_mnt):
         url_raster = "https://data.geopf.fr/wms-r"

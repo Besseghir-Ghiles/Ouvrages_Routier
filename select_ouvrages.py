@@ -1,18 +1,18 @@
 import geopandas as gpd
 import os
 import pandas as pd
-from get_data_functions import get_ponts
+from get_data_functions import get_ponts_from_geom
 
 class OuvragesSelector:
     def __init__(self, ouvrages_gdf, output_folder, route_number):
         self.ouvrages_gdf = ouvrages_gdf
         self.output_folder = output_folder
         self.filter_route = f"numero='{route_number}'"
-        self.ponts_gdf = get_ponts(self.filter_route, "BDTOPO_V3:construction_surfacique")
-        self.ponts2_gdf = get_ponts(self.filter_route, "BDTOPO_V3:construction_lineaire")
-
-        # géométrie globale de la route
+                # géométrie globale de la route
         route_geom = self.ouvrages_gdf.unary_union
+        self.ponts_gdf = get_ponts_from_geom(route_geom, "BDTOPO_V3:construction_surfacique")
+        self.ponts2_gdf = get_ponts_from_geom(route_geom, "BDTOPO_V3:construction_lineaire")
+
 
         #  buffer zone autour de la route
         buffer_distance = 10
