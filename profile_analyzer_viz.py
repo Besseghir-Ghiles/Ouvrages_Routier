@@ -22,7 +22,7 @@ class ProfileAnalyzer:
         self.route_number = route_number
         self.filter_route = f"cpx_numero='{route_number}'"
         self.lines_selected = get_data(self.filter_route, "BDTOPO_V3:troncon_de_route", self.boundingbox)
-        self.lines_selected = self.lines_selected[self.lines_selected['nature'] == 'Type autoroutier']
+        #self.lines_selected = self.lines_selected[self.lines_selected['nature'] == 'Type autoroutier']
         
         # Save lines_selected to check its contents
         os.makedirs(self.output_folder, exist_ok=True)

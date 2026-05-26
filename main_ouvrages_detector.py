@@ -19,7 +19,7 @@ def main():
     )
     segments_gdf, calculation_points_gdf = analyzer.analyze_profile()
     analyzer.save_output(segments_gdf, calculation_points_gdf)
-
+     
     constructor = SegmentConstructor(
         classified_profiles = segments_gdf,
         output_folder = output_folder,
@@ -28,12 +28,22 @@ def main():
     )
     ouvrages_gdf = constructor.construct_segments()
     constructor.save_output(ouvrages_gdf)
+    """ 
 
+    constructor = SegmentConstructor(
+        classified_profiles = segments_gdf,
+        output_folder = output_folder,
+        route_number = route,
+        lines_selected = analyzer.lines_selected
+    )
 
+    constructor.construct()
+""" 
     selector = OuvragesSelector(
         ouvrages_gdf = ouvrages_gdf,
         output_folder = output_folder,
-        route_number = route
+        route_number = route,
+        lines_selected = analyzer.lines_selected
     )
     selected_ouvrages = selector.select_ouvrages()
     selector.save_output(selected_ouvrages)
