@@ -420,6 +420,14 @@ def main():
 
     filter_PR = f"route='{route_number}'"
     PR_route = get_data(filter_PR, "BDTOPO_V3:point_de_repere", bbox)
+    print("PR saisi début :", repr(segment_start_PR))
+    
+    print("PR saisi fin :", repr(segment_end_PR))
+
+    print("Type colonne numero :", PR_route['numero'].dtype)
+
+    print("Valeurs PR trouvées :")
+    print(sorted(PR_route['numero'].astype(str).unique()))
     # récupérer PR start et end AVANT centerline
     PR_start_df = PR_route[PR_route['numero'] == segment_start_PR]
     PR_end_df = PR_route[PR_route['numero'] == segment_end_PR]

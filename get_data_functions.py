@@ -17,6 +17,33 @@ def get_data(filter, type_of_data, bbox):
         "CQL_FILTER": filter,
         "SRSNAME": "EPSG:2154"  # Lambert-93
     }
+    """ 
+    # ajouter le filtre seulement si présent
+    if filter:
+        params["CQL_FILTER"] = filter
+
+    #if type_of_data == "BDTOPO_V3:troncon_de_route":
+        #params.pop("BBOX", None)
+
+                # filtre directement côté IGN
+    #if bbox:
+    if bbox:
+
+        minx, miny, maxx, maxy = bbox
+        margin = 500
+
+        params["BBOX"] = (
+            f"{minx},"
+            f"{miny},"
+            f"{maxx},"
+            f"{maxy}"
+        )
+    
+        print("BBOX envoyée au serveur IGN:")
+        print(repr(params["BBOX"]))
+    
+    print(params)
+    """
 
     response = requests.get(url, params=params)
 
@@ -33,8 +60,9 @@ def get_data(filter, type_of_data, bbox):
             print(f"Bounding box: {bbox}")
             save_bbox_as_geopackage(bbox, "bounding_box1.gpkg")
             print(f"GeoDataFrame bounds: {gdf.total_bounds}")
+            """
             if bbox:
-                """ 
+                 
                 print(f"Bounding box: {bbox}")
                 minx, miny, maxx, maxy = bbox
                 minx += 100
@@ -44,17 +72,18 @@ def get_data(filter, type_of_data, bbox):
                 bbox_geom = box(minx, miny, maxx, maxy)
                 gdf = gpd.clip(gdf, bbox_geom)
                 print(f"Filtered GeoDataFrame bounds: {gdf.total_bounds}")
-                """
+            """  
             if bbox:
                 print("\n===== DEBUG BBOX =====")
                 print("BBox originale:", bbox)
 
                 minx, miny, maxx, maxy = bbox
+                 
                 minx += 100
                 miny += 100
                 maxx -= 100
                 maxy -= 100
-
+                
                 print("BBox modifiée:", (minx, miny, maxx, maxy))
                 if minx >= maxx or miny >= maxy:
                     print(" BBOX invalide après réduction  on annule le clip")
@@ -75,6 +104,7 @@ def get_data(filter, type_of_data, bbox):
                     print("\n===== DEBUG VALIDITÉ =====")
                     print("Géométries valides ?", gdf.is_valid.all())
                     save_bbox_as_geopackage(gdf.total_bounds, "bounding_box2.gpkg")
+                
 
             return gdf
             
