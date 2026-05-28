@@ -2,6 +2,8 @@ import geopandas as gpd
 import os
 import pandas as pd
 from get_data_functions import get_ponts_from_geom
+from openpyxl.styles import Font
+from openpyxl.styles import Alignment
 
 class OuvragesSelector:
     def __init__(self, ouvrages_gdf, output_folder, route_number, lines_selected):
@@ -210,6 +212,8 @@ class OuvragesSelector:
 
         return selected_ouvrages
     
+    """#   
+    
     def save_output(self, selected_gdf):
         # Create output folder if it doesn't exist
         os.makedirs(self.output_folder, exist_ok=True)
@@ -241,5 +245,188 @@ class OuvragesSelector:
         #  ponts lineaire 
         self.ponts2_gdf.to_file(
             os.path.join(self.output_folder, "ponts_lineaire.gpkg"),
+            driver='GPKG'
+        )
+    """
+
+    def save_output(self, selected_gdf):
+
+        # Créer le dossier si nécessaire
+        os.makedirs(self.output_folder, exist_ok=True)
+
+        selected_gdf = selected_gdf.copy()
+
+        # Colonnes numériques à arrondir
+        cols_to_round = [
+            "length",
+            "hauteur_max",
+            "pente_max",
+            "hauteur_moyenne",
+            "pente_moyenne",
+            "abcisse_start",
+            "abcisse_end"
+        ]
+
+        for col in cols_to_round:
+            if col in selected_gdf.columns:
+                selected_gdf[col] = (
+                    selected_gdf[col]
+                    .astype(float)
+                    .round(2)
+                )
+
+        # Sauvegarde GPKG
+        output_file = os.path.join(
+            self.output_folder,
+            "selected_ouvrages.gpkg"
+        )
+
+        selected_gdf.to_file(
+            output_file,
+            driver='GPKG',
+            layer='ouvrages'
+        )
+
+        # EXPORT EXCEL
+        excel_df = selected_gdf.drop(
+            columns=["geometry"],
+            errors="ignore"
+        )
+
+        colonnes = [
+            "nom",
+            "classification",
+            "chaussee",
+            "PR_start",
+            "abcisse_start",
+            "PR_end",
+            "abcisse_end",
+            "length",
+            "hauteur_max",
+            "hauteur_moyenne",
+            "pente_max",
+            "pente_moyenne",
+            "route"
+        ]
+
+        colonnes_existantes = [
+            c for c in colonnes
+            if c in excel_df.columns
+        ]
+
+        excel_df = excel_df[
+            colonnes_existantes
+        ]
+
+        excel_path = os.path.join(
+            self.output_folder,
+            "selected_ouvrages.xlsx"
+        )
+
+        with pd.ExcelWriter(
+            excel_path,
+            engine='openpyxl'
+        ) as writer:
+
+            excel_df.to_excel(
+                writer,
+                sheet_name='Ouvrages',
+                index=False
+            )
+
+            worksheet = writer.sheets[
+                'Ouvrages'
+            ]
+            # Style titres
+            for cell in worksheet[1]:
+
+                cell.font = Font(
+                    bold=True
+                )
+
+                cell.alignment = Alignment(
+                    horizontal='center',
+                    vertical='center'
+                )
+
+            # Ajuster largeur automatique
+            for column_cells in worksheet.columns:
+
+                max_length = 0
+
+                column = (
+                    column_cells[0]
+                    .column_letter
+                )
+
+                for cell in column_cells:
+
+                    try:
+                        if cell.value:
+
+                            max_length = max(
+                                max_length,
+                                len(str(cell.value))
+                            )
+
+                    except:
+                        pass
+
+                # largeur plus confortable
+                adjusted_width = (
+                    (max_length + 4)
+                    * 1.5
+                )
+
+                adjusted_width = max(
+                    15,
+                    min(
+                        adjusted_width,
+                        35
+                    )
+                )
+
+                worksheet.column_dimensions[
+                    column
+                ].width = adjusted_width
+
+            # Format nombres
+            for col in worksheet.columns:
+
+                for cell in col:
+
+                    if isinstance(
+                        cell.value,
+                        (int, float)
+                    ):
+
+                        cell.number_format = (
+                            '0.00'
+                        )
+
+                        cell.alignment = Alignment(
+                            horizontal='center'
+                        )
+
+            # Figer première ligne
+            worksheet.freeze_panes = 'A2'
+
+        print(
+            f"Excel sauvegardé : {excel_path}"
+        )
+        # Sauvegarde ponts
+        self.ponts_gdf.to_file(
+            os.path.join(
+                self.output_folder,
+                "ponts_surface.gpkg"
+            ),
+            driver='GPKG'
+        )
+
+        self.ponts2_gdf.to_file(
+            os.path.join(
+                self.output_folder,
+                "ponts_lineaire.gpkg"
+            ),
             driver='GPKG'
         )

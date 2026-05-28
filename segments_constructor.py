@@ -548,11 +548,41 @@ class SegmentConstructor:
                                 hauteur = closest_row_j['max_height_difference']
                                 gap_count = 0
                                 hauteurs.append(hauteur)
+                                """#
                                 if closest_row_j['slope_ouvrage_section'] is not None:
                                     pente = closest_row_j['slope_ouvrage_section']
                                 else:
                                     pente = closest_row_j['slope_ouvrage_total']
-                                pentes.append(pente)
+                                """
+
+                                if pd.notna(
+                                    closest_row_j['slope_ouvrage_section']
+                                ):
+
+                                    pente = (
+                                        closest_row_j[
+                                            'slope_ouvrage_section'
+                                        ]
+                                    )
+
+                                elif pd.notna(
+                                    closest_row_j['slope_ouvrage_total']
+                                ):
+
+                                    pente = (
+                                        closest_row_j[
+                                            'slope_ouvrage_total'
+                                        ]
+                                    )
+
+                                else:
+
+                                    pente = None
+
+
+                                if pente is not None:
+                                    pentes.append(pente)
+                                #pentes.append(pente)
                                 list_points.append(pointj_geo)
                                 j += 1
                                 iteration_count += 1

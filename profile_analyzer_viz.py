@@ -82,7 +82,7 @@ class ProfileAnalyzer:
         Z2 = self.get_raster_value(point2)
         if Z1 is None or Z2 is None:
             return None
-        deltaZ = Z2 - Z1
+        deltaZ = abs(Z2 - Z1)
 
         dist = self.calculate_distance(point1, point2)
         if dist is None:
@@ -324,7 +324,7 @@ class ProfileAnalyzer:
         height_difference = None
         slope_ouvrage_total = None
         if alt_max is not None and alt_min is not None:
-            height_difference = alt_max - alt_min
+            height_difference = abs(alt_max - alt_min)
             slope_ouvrage_total = height_difference / distance
 
         # Slopes at the top and bottom of an ouvrage are not relaible, so we calculate the slope based on the middle section, if possible
@@ -346,7 +346,6 @@ class ProfileAnalyzer:
         self.logger.info(f"\nFound significant slope change:")
         self.logger.info(f"Final slope: {slope_ouvrage_total}")
         self.logger.info(f"Height difference: {height_difference}")
-
         return slope_ouvrage_total, slope_ouvrage_section, slope_ouvrage_middle, height_difference, calculation_points
 
     def calculate_attributes_remblai(self, perpendicular_line, reg, coef):
@@ -449,7 +448,7 @@ class ProfileAnalyzer:
 
         height_difference = None
         if alt_max is not None and alt_min is not None:
-            height_difference = alt_max - alt_min
+            height_difference = abs(alt_max - alt_min)
 
         if height_difference > 50:
             height_difference = None
@@ -476,7 +475,6 @@ class ProfileAnalyzer:
 
         if height_difference is not None and slope_ouvrage_total is not None:
             self.logger.info(f"Final calculations: height_diff={height_difference:.2f}, slope={slope_ouvrage_total:.2f}")
-
         return slope_ouvrage_total, slope_ouvrage_section, slope_ouvrage_middle, height_difference, calculation_points
 
     def classify_point(self, height_difference):
