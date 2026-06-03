@@ -1,6 +1,7 @@
 from profile_analyzer_viz import ProfileAnalyzer
 from segments_constructor import SegmentConstructor
 from select_ouvrages import OuvragesSelector
+from draw_selected_profiles import DrawSelectedProfiles
 
 def main():
     route = input("Saisir le code de la route (ex. A33): ")
@@ -47,6 +48,15 @@ def main():
     )
     selected_ouvrages = selector.select_ouvrages()
     selector.save_output(selected_ouvrages)
+
+
+    drawer = DrawSelectedProfiles(
+        route_number=route,
+        output_folder=output_folder,
+        mnt_path="data/mnt.tif"
+    )
+
+    drawer.generate()
 
 if __name__ == "__main__":
     main()

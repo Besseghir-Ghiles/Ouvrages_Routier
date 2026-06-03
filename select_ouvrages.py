@@ -54,12 +54,55 @@ class OuvragesSelector:
                             'PR_end': intersecting.iloc[-1]['PR_end'],
                             'abcisse_end': intersecting.iloc[-1]['abcisse_end'],
                             'length': intersecting.geometry.length.sum(),
-                            'hauteur_max': intersecting['hauteur_max'].max(),
-                            'pente_max': intersecting['pente_max'].max(),
-                            'hauteur_moyenne': intersecting['hauteur_moyenne'].mean(),
-                            'pente_moyenne': intersecting['pente_moyenne'].mean(),
-                            'route': intersecting.iloc[0]['route']
-                        }
+                            #'hauteur_max': intersecting['hauteur_max'].max(),
+                            #'pente_max': intersecting['pente_max'].max(),
+                            #'hauteur_moyenne': intersecting['hauteur_moyenne'].mean(),
+                            #'pente_moyenne': intersecting['pente_moyenne'].mean(),
+                            'hauteur_talus_max':intersecting['hauteur_talus_max'].max(),
+                            'hauteur_talus_moyenne':intersecting['hauteur_talus_moyenne'].mean(),
+                            #'hauteur_centre_max':intersecting['hauteur_centre_max'].max(),
+                            'hauteur_centre_max':intersecting.loc[intersecting['hauteur_centre_max'].abs().idxmax(),'hauteur_centre_max'],
+                            'hauteur_centre_moyenne':intersecting['hauteur_centre_moyenne'].mean(),
+                            'pente_max':intersecting['pente_max'].max(),
+                            'pente_moyenne':intersecting['pente_moyenne'].mean(),
+                            'route': intersecting.iloc[0]['route'],
+                            'profil_talus_route':intersecting.iloc[0]['profil_talus_route'],
+
+                            'profil_talus_ouvrage':
+                            intersecting.iloc[0]['profil_talus_ouvrage'],
+
+                            'profil_centre_route':
+                            intersecting.iloc[0]['profil_centre_route'],
+
+                            'profil_centre_ouvrage':
+                            intersecting.iloc[0]['profil_centre_ouvrage'],
+
+                            'profil_pente_route':
+                            intersecting.iloc[0]['profil_pente_route'],
+
+                            'profil_pente_ouvrage':
+                            intersecting.iloc[0]['profil_pente_ouvrage'],
+
+                            'profil_talus_id':
+                            intersecting.iloc[0]['profil_talus_id'],
+
+                            'profil_centre_id':
+                            intersecting.iloc[0]['profil_centre_id'],
+
+                            'profil_pente_id':
+                            intersecting.iloc[0]['profil_pente_id'],
+                            'talus_dist_min':
+                            intersecting.iloc[0]['talus_dist_min'],
+
+                            'talus_alt_min':
+                            intersecting.iloc[0]['talus_alt_min'],
+
+                            'talus_dist_max':
+                            intersecting.iloc[0]['talus_dist_max'],
+
+                            'talus_alt_max':
+                            intersecting.iloc[0]['talus_alt_max'],
+                                                    }
                         merged_segments.append(merged_segment)
                 
                 if merged_segments:
@@ -149,6 +192,18 @@ class OuvragesSelector:
             ignore_index=True
         )
 
+        
+        merged_ouvrages = merged_ouvrages.drop_duplicates(
+            subset=[
+                "classification",
+                "chaussee",
+                "PR_start",
+                "abcisse_start",
+                "PR_end",
+                "abcisse_end"
+            ]
+        ).reset_index(drop=True)
+        
 
         rejected_length=merged_ouvrages[
             merged_ouvrages.geometry.length<=20
@@ -259,9 +314,15 @@ class OuvragesSelector:
         # Colonnes numériques à arrondir
         cols_to_round = [
             "length",
-            "hauteur_max",
+            "hauteur_talus_max",
+            "talus_dist_min",
+            "talus_alt_min",
+            "talus_dist_max",
+            "talus_alt_max",
+            "hauteur_talus_moyenne",
+            "hauteur_centre_max",
+            "hauteur_centre_moyenne",
             "pente_max",
-            "hauteur_moyenne",
             "pente_moyenne",
             "abcisse_start",
             "abcisse_end"
@@ -296,18 +357,43 @@ class OuvragesSelector:
         colonnes = [
             "nom",
             "classification",
-            "chaussee",
+            #"chaussee",
             "PR_start",
             "abcisse_start",
             "PR_end",
             "abcisse_end",
             "length",
-            "hauteur_max",
-            "hauteur_moyenne",
+            #"hauteur_max",
+            #"hauteur_moyenne",
+            "hauteur_talus_max",
+            #"profil_talus_ouvrage",
+            #"profil_pente_ouvrage",
+            "hauteur_talus_moyenne",
+            "hauteur_centre_max",
+            #"profil_centre_ouvrage",
+            #"profil_centre_route",
+            "hauteur_centre_moyenne",
             "pente_max",
+            #"profil_talus_route",
+            #"profil_pente_route",
             "pente_moyenne",
-            "route"
+            #"profil_talus_id",
+            #"profil_centre_id",
+            #"profil_pente_id",
+            #"route"
         ]
+
+        excel_df["PR_start"] = (
+            excel_df["PR_start"]
+            .astype(str)
+            .str.extract(r"PR(\d+)")[0]
+        )
+
+        excel_df["PR_end"] = (
+            excel_df["PR_end"]
+            .astype(str)
+            .str.extract(r"PR(\d+)")[0]
+        )
 
         colonnes_existantes = [
             c for c in colonnes
