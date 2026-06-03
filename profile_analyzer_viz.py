@@ -246,8 +246,9 @@ class ProfileAnalyzer:
         altitude = reg.predict(distance_reshaped)
         return altitude[0][0]
 
+    """
     def calculate_attributes_deblai(self, perpendicular_line, reg, coef):
-        """Calculate attributes for deblai profile"""
+        Calculate attributes for deblai profile
         # Find the minimum to determine starting point
         alt_min = 1000
         dist_min = 60
@@ -346,136 +347,532 @@ class ProfileAnalyzer:
         self.logger.info(f"\nFound significant slope change:")
         self.logger.info(f"Final slope: {slope_ouvrage_total}")
         self.logger.info(f"Height difference: {height_difference}")
-        return slope_ouvrage_total, slope_ouvrage_section, slope_ouvrage_middle, height_difference, calculation_points
+        return slope_ouvrage_total, slope_ouvrage_section, slope_ouvrage_middle, height_difference, calculation_points,dist_min,alt_min,dist_max,alt_max
+    """
+
+    def calculate_attributes_deblai(self, perpendicular_line, reg, coef):
+        """Calculate attributes for deblai profile"""
+
+        calculation_points = []
+
+        self.logger.info("Starting calculate_attributes_deblai V2")
+
+        # ==================================================
+        # 1) Trouver l'intersection TN
+        # ==================================================
+
+        j = 60
+        prev_difference = None
+
+        dist_max = None
+        alt_max = None
+        prev_j = None
+
+        while j > 30:
+
+            point = perpendicular_line.interpolate(j)
+
+            current_altitude = self.get_raster_value(point)
+
+            if current_altitude is None:
+                j -= 0.5
+                continue
+
+            interpolated_altitude = self.calculate_interpolated_altitude(
+                j,
+                reg
+            )
+
+            if interpolated_altitude is None:
+                j -= 0.5
+                continue
+
+            current_difference = (
+                current_altitude
+                - interpolated_altitude
+            )
+
+            point1 = perpendicular_line.interpolate(j + 0.5)
+            point2 = perpendicular_line.interpolate(j - 0.5)
+
+            current_slope = self.calculate_slope(
+                point1,
+                point2
+            )
+
+            calculation_points.append({
+                "point": point,
+                "elevation": current_altitude,
+                "slope": current_slope,
+                "distance": j
+            })
+
+            if (
+                prev_difference is not None
+                and prev_difference * current_difference <= 0
+            ):
+
+                denom = abs(prev_difference) + abs(current_difference)
+
+                if denom != 0:
+                    ratio = abs(prev_difference) / denom
+                    dist_max = prev_j + ratio * (j - prev_j)
+                else:
+                    dist_max = j
+
+                alt_max = self.calculate_interpolated_altitude(
+                    dist_max,
+                    reg
+                )
+
+                self.logger.info(
+                    f"Intersection TN trouvée : "
+                    f"dist_max={dist_max}, alt_max={alt_max}"
+                )
+
+                break 
+
+            prev_j = j
+            prev_difference = current_difference
+
+            j -= 0.5
+        """ 
+        if dist_max is None:
+
+            return (
+                None,
+                None,
+                None,
+                None,
+                calculation_points,
+                None,
+                None,
+                None,
+                None
+            )
+        """
+        if dist_max is None:
+
+            self.logger.warning(
+                "Intersection TN non trouvée -> fallback"
+            )
+
+            dist_max = j
+
+            alt_max = self.get_raster_value(
+                perpendicular_line.interpolate(j)
+            )
+
+        # ==================================================
+        # 2) Chercher le fond du déblai
+        # ==================================================
+
+        seuil_descente = 0.05
+        seuil_plateau = 0.03
+        plateau_min_points = 6
+
+        plateau_count = 0
+
+        last_slope_dist = dist_max
+        last_slope_alt = alt_max
+
+        dist_min = None
+        alt_min = None
+
+        k = dist_max
+
+        while k < 60:
+
+            z1 = self.get_raster_value(
+                perpendicular_line.interpolate(k)
+            )
+
+            z2 = self.get_raster_value(
+                perpendicular_line.interpolate(k + 0.5)
+            )
+
+            if z1 is None or z2 is None:
+                k += 0.5
+                continue
+
+            delta = z2 - z1
+
+            # vraie descente
+            if delta < -seuil_descente:
+
+                last_slope_dist = k + 0.5
+                last_slope_alt = z2
+
+                plateau_count = 0
+
+            # zone plate
+            elif abs(delta) < seuil_plateau:
+
+                plateau_count += 1
+
+            else:
+
+                plateau_count = 0
+
+            if plateau_count >= plateau_min_points:
+
+                dist_min = last_slope_dist
+                alt_min = last_slope_alt
+
+                self.logger.info(
+                    f"Fond déblai détecté : "
+                    f"dist_min={dist_min}, alt_min={alt_min}"
+                )
+
+                break
+
+            k += 0.5
+
+        if dist_min is None:
+
+            dist_min = last_slope_dist
+            alt_min = last_slope_alt
+
+        # ==================================================
+        # 3) Calculs finaux
+        # ==================================================
+
+        distance = abs(dist_max - dist_min)
+
+        if distance == 0:
+
+            return (
+                None,
+                None,
+                None,
+                None,
+                calculation_points,
+                None,
+                None,
+                None,
+                None
+            )
+
+        height_difference = abs(
+            alt_max - alt_min
+        )
+
+        slope_ouvrage_total = (
+            height_difference / distance
+        )
+
+        slope_ouvrage_section = None
+
+        safety_margin = 1.5
+
+        if distance > (safety_margin * 2):
+
+            point_min = perpendicular_line.interpolate(
+                dist_min + 2
+            )
+
+            point_max = perpendicular_line.interpolate(
+                dist_max - 2
+            )
+
+            slope_ouvrage_section = self.calculate_slope(
+                point_min,
+                point_max
+            )
+
+        slope_ouvrage_middle = None
+
+        section_length = 3
+
+        if distance > section_length:
+
+            point_middle_min = perpendicular_line.interpolate(
+                dist_min
+                + (distance / 2)
+                - (section_length / 2)
+            )
+
+            point_middle_max = perpendicular_line.interpolate(
+                dist_min
+                + (distance / 2)
+                + (section_length / 2)
+            )
+
+            slope_ouvrage_middle = self.calculate_slope(
+                point_middle_min,
+                point_middle_max
+            )
+
+        return (
+            slope_ouvrage_total,
+            slope_ouvrage_section,
+            slope_ouvrage_middle,
+            height_difference,
+            calculation_points,
+            dist_min,
+            alt_min,
+            dist_max,
+            alt_max
+        )
 
     def calculate_attributes_remblai(self, perpendicular_line, reg, coef):
         """Calculate attributes for remblai profile"""
-        # Find the maximum to determine starting point
-        alt_max = 0
-        i = 60
-        slope = 0
+
         calculation_points = []
+        self.logger.info("Starting calculate_attributes_remblai V2")
 
-        self.logger.info("Starting calculate_attributes_remblai")
-        
-        # Find initial slope
-        while slope < 0.08 and i > 30:
-            point1 = perpendicular_line.interpolate(i+1)
-            point2 = perpendicular_line.interpolate(i-0.5)
-            slope = abs(self.calculate_slope(point1, point2))
-            i -= 0.5
-            
-        alt_max = self.get_raster_value(point1)
-        dist_max = i
+        # Chercher l'intersection avec le terrain naturel
 
-        self.logger.info(f"Found starting point: dist_max={dist_max}, alt_max={alt_max}")
+        j = 60
+        prev_difference = None
+        prev_j = None
+        prev_altitude = None
 
-        j = dist_max
-        natural_slope = coef
-        max_iterations = 60
+        dist_min = None
+        alt_min = None
+
+        max_iterations = 80
         iteration_count = 0
 
-        self.logger.info(f"Natural slope: {natural_slope}")
-        prev_difference = None
-        current_altitude = self.get_raster_value(perpendicular_line.interpolate(i))
-
         while j > 30 and iteration_count < max_iterations:
-            iteration_count += 1
-            
-            # Calculate current slope
-            point1 = perpendicular_line.interpolate(j+0.5)
-            point2 = perpendicular_line.interpolate(j-0.5)
-            current_slope = self.calculate_slope(point1, point2)
 
-            # Get real altitude current point
+            iteration_count += 1
+
             point = perpendicular_line.interpolate(j)
             current_altitude = self.get_raster_value(point)
-            
+
             if current_altitude is None:
-                self.logger.warning(f"No elevation data at distance {j}")
                 j -= 0.5
                 continue
 
-            # Calculate interpolated altitude
-            interpolated_altitude = self.calculate_interpolated_altitude(j, reg)
+            interpolated_altitude = self.calculate_interpolated_altitude(
+                j,
+                reg
+            )
+
             if interpolated_altitude is None:
-                self.logger.warning(f"Could not interpolate altitude at distance {j}")
                 j -= 0.5
                 continue
 
-            # Calculate difference
-            if current_altitude is None or interpolated_altitude is None:
-                j -= 0.5
-                self.logger.warning(f"No elevation data at distance {j}, skipping")
-                continue
             current_difference = current_altitude - interpolated_altitude
 
-            # Store points
+            point1 = perpendicular_line.interpolate(j + 0.5)
+            point2 = perpendicular_line.interpolate(j - 0.5)
+            current_slope = self.calculate_slope(point1, point2)
+
             calculation_points.append({
-                'point': point,
-                'elevation': current_altitude,
-                'slope': current_slope,
-                'distance': j
+                "point": point,
+                "elevation": current_altitude,
+                "slope": current_slope,
+                "distance": j
             })
 
-            # Fixed logging statement with proper None handling
-            current_diff_str = f"{current_difference:.2f}" if current_difference is not None else "None"
-            prev_diff_str = f"{prev_difference:.2f}" if prev_difference is not None else "None"
-            self.logger.info(f"Distance {j}: current_diff={current_diff_str}, prev_diff={prev_diff_str}")
+            if prev_difference is not None:
 
-            # Check for intersection
-            if prev_difference is not None and current_difference is not None:
-                if (prev_difference * current_difference <= 0):
-                    self.logger.info(f"Intersection found at distance {j}")
+                if prev_difference * current_difference <= 0:
+
+                    # interpolation linéaire pour tomber plus proche
+                    # de la vraie intersection
+                    denom = abs(prev_difference) + abs(current_difference)
+
+                    if denom != 0:
+                        ratio = abs(prev_difference) / denom
+                        dist_min = prev_j + ratio * (j - prev_j)
+                    else:
+                        dist_min = j
+
+                    alt_min = self.calculate_interpolated_altitude(
+                        dist_min,
+                        reg
+                    )
+
+                    self.logger.info(
+                        f"Intersection TN trouvée : "
+                        f"dist_min={dist_min}, alt_min={alt_min}"
+                    )
+
                     break
 
             prev_difference = current_difference
+            prev_j = j
+            prev_altitude = current_altitude
+
             j -= 0.5
+        """  
+        if dist_min is None or alt_min is None:
+            self.logger.warning("Aucune intersection TN trouvée pour remblai")
+            return None, None, None, None, calculation_points, None, None, None, None
+        """
+        if dist_min is None or alt_min is None:
 
-        # Check if we hit the iteration limit
-        if iteration_count >= max_iterations:
-            self.logger.warning("Max iterations reached without finding intersection")
-            return None, None, None, None, calculation_points
+            self.logger.warning(
+                "Intersection TN non trouvée -> fallback"
+            )
 
-        # Calculate final attributes
-        alt_min = current_altitude
-        dist_min = j + 0.5
+            dist_min = j
+
+            alt_min = self.get_raster_value(
+                perpendicular_line.interpolate(j)
+            )
+        # ==================================================
+        # 2) Depuis l'intersection, chercher le sommet du talus
+        #    = dernier point de vraie montée avant plateau
+        # ==================================================
+
+        seuil_montee = 0.05
+        seuil_plateau = 0.03
+        plateau_min_points = 6  # 6 * 0.5 m = 3 m
+
+        plateau_count = 0
+
+        last_slope_dist = dist_min
+        last_slope_alt = alt_min
+
+        dist_max = None
+        alt_max = None
+
+        k = dist_min
+
+        while k < 60:
+
+            z1 = self.get_raster_value(
+                perpendicular_line.interpolate(k)
+            )
+
+            z2 = self.get_raster_value(
+                perpendicular_line.interpolate(k + 0.5)
+            )
+
+            if z1 is None or z2 is None:
+                k += 0.5
+                continue
+
+            delta = z2 - z1
+
+            # vraie montée du talus
+            if delta > seuil_montee:
+
+                last_slope_dist = k + 0.5
+                last_slope_alt = z2
+                plateau_count = 0
+
+            # zone quasi plate
+            elif abs(delta) < seuil_plateau:
+
+                plateau_count += 1
+
+            # petit changement non stable
+            else:
+
+                plateau_count = 0
+
+            # plateau confirmé
+            if plateau_count >= plateau_min_points:
+
+                dist_max = last_slope_dist
+                alt_max = last_slope_alt
+
+                self.logger.info(
+                    f"Plateau détecté : "
+                    f"dist_max={dist_max}, alt_max={alt_max}"
+                )
+
+                break
+
+            k += 0.5
+
+        # Si aucun plateau trouvé, on garde le dernier point de montée
+        if dist_max is None or alt_max is None:
+
+            dist_max = last_slope_dist
+            alt_max = last_slope_alt
+
+            self.logger.info(
+                f"Aucun plateau confirmé, dernier point de montée utilisé : "
+                f"dist_max={dist_max}, alt_max={alt_max}"
+            )
+
         distance = abs(dist_max - dist_min)
 
         if distance == 0:
             self.logger.warning("Zero distance found, cannot calculate slope")
-            return None, None, None, None, calculation_points
+            return None, None, None, None, calculation_points, None, None, None, None
 
         height_difference = None
+
         if alt_max is not None and alt_min is not None:
             height_difference = abs(alt_max - alt_min)
 
-        if height_difference > 50:
+        if height_difference is not None and height_difference > 50:
             height_difference = None
-        
+
         slope_ouvrage_total = None
+
         if height_difference is not None and distance is not None:
             slope_ouvrage_total = height_difference / distance
 
-        # Slopes at the top and bottom of an ouvrage are not relaible, so we calculate the slope based on the middle section, if possible
+        # ==================================================
+        # 3) Pentes comme avant
+        # ==================================================
+
         slope_ouvrage_section = None
         safety_margin = 1.5
-        if distance > (safety_margin * 2):
-            point_min = perpendicular_line.interpolate(dist_min+2)
-            point_max = perpendicular_line.interpolate(dist_max-2)
-            slope_ouvrage_section = self.calculate_slope(point_min, point_max)
 
-        # Slopes of the middle section are more reliable
+        if distance > (safety_margin * 2):
+
+            point_min = perpendicular_line.interpolate(
+                dist_min + 2
+            )
+
+            point_max = perpendicular_line.interpolate(
+                dist_max - 2
+            )
+
+            slope_ouvrage_section = self.calculate_slope(
+                point_min,
+                point_max
+            )
+
         slope_ouvrage_middle = None
         section_length = 3
+
         if distance > section_length:
-            point_middle_min = perpendicular_line.interpolate(dist_min + (distance / 2) - (section_length / 2))
-            point_middle_max = perpendicular_line.interpolate(dist_min + (distance / 2) + (section_length / 2))
-            slope_ouvrage_middle = self.calculate_slope(point_middle_min, point_middle_max)
+
+            point_middle_min = perpendicular_line.interpolate(
+                dist_min
+                + (distance / 2)
+                - (section_length / 2)
+            )
+
+            point_middle_max = perpendicular_line.interpolate(
+                dist_min
+                + (distance / 2)
+                + (section_length / 2)
+            )
+
+            slope_ouvrage_middle = self.calculate_slope(
+                point_middle_min,
+                point_middle_max
+            )
 
         if height_difference is not None and slope_ouvrage_total is not None:
-            self.logger.info(f"Final calculations: height_diff={height_difference:.2f}, slope={slope_ouvrage_total:.2f}")
-        return slope_ouvrage_total, slope_ouvrage_section, slope_ouvrage_middle, height_difference, calculation_points
+            self.logger.info(
+                f"Final remblai V2: "
+                f"height_diff={height_difference:.2f}, "
+                f"slope={slope_ouvrage_total:.2f}"
+            )
+
+        return (
+            slope_ouvrage_total,
+            slope_ouvrage_section,
+            slope_ouvrage_middle,
+            height_difference,
+            calculation_points,
+            dist_min,
+            alt_min,
+            dist_max,
+            alt_max
+        )
 
     def classify_point(self, height_difference):
         """Classify point as zone de remblai, zone de deblai ou en profil rasant"""
@@ -613,6 +1010,12 @@ class ProfileAnalyzer:
                 interpolated_height_nat_terrain_route = self.calculate_interpolated_altitude(60, reg)
                 height_difference_nat_terrain = average_height_route - interpolated_height_nat_terrain_route
 
+                # calculer la hauteur au centre
+                hauteur_centre = (
+                    average_height_route
+                    - interpolated_height_nat_terrain_route
+                )
+
                 profile_type = self.classify_point(height_difference_nat_terrain)
                 self.logger.info(f"\nAt distance {current_distance}:")
                 self.logger.info(f"Profile type: {profile_type}")
@@ -624,11 +1027,16 @@ class ProfileAnalyzer:
                 slope_ouvrage_section = None
                 slope_ouvrage_middle = None
                 calculation_points = None
+                dist_min = None
+                alt_min = None
+                dist_max = None
+                alt_max = None
+                
 
                 if profile_type == "deblai":
-                    slope_ouvrage_total, slope_ouvrage_section, slope_ouvrage_middle, max_height_difference, calculation_points = self.calculate_attributes_deblai(perpendicular_line, reg, coef)
+                    slope_ouvrage_total, slope_ouvrage_section, slope_ouvrage_middle, max_height_difference, calculation_points,dist_min, alt_min,dist_max,alt_max = self.calculate_attributes_deblai(perpendicular_line, reg, coef)
                 elif profile_type == "remblai":
-                    slope_ouvrage_total, slope_ouvrage_section, slope_ouvrage_middle, max_height_difference, calculation_points = self.calculate_attributes_remblai(perpendicular_line, reg, coef)
+                    slope_ouvrage_total, slope_ouvrage_section, slope_ouvrage_middle, max_height_difference, calculation_points,dist_min, alt_min,dist_max,alt_max = self.calculate_attributes_remblai(perpendicular_line, reg, coef)
                 
                 if calculation_points:
                     all_calculation_points.extend(calculation_points)
@@ -640,15 +1048,25 @@ class ProfileAnalyzer:
                     'height_difference_nat_terrain': height_difference_nat_terrain,
                     'average_height_route': average_height_route,
                     'interpolated_height_nat_terrain_route': interpolated_height_nat_terrain_route,
+                    "reg_coef": reg.coef_[0][0],
+                    "reg_intercept": reg.intercept_[0],
                     #'average_height_terrain': average_height_terrain,
                     'num_voies': self.lines_selected.iloc[i]['nombre_de_voies'],
                     #'distance': current_distance,
+                    'hauteur_centre': hauteur_centre,
+                    'distance_profil': current_distance,
                     'largeur_route': self.lines_selected.iloc[i]['largeur_de_chaussee'],
                     'num_route': self.lines_selected.iloc[i]['cpx_numero'],
                     'max_height_difference': max_height_difference,
                     'slope_ouvrage_total': slope_ouvrage_total,
                     'slope_ouvrage_section': slope_ouvrage_section,
-                    'slope_ouvrage_middle': slope_ouvrage_middle
+                    'slope_ouvrage_middle': slope_ouvrage_middle,
+                    'talus_dist_min': dist_min,
+                    'talus_alt_min': alt_min,
+
+                    'talus_dist_max': dist_max,
+                    'talus_alt_max': alt_max,
+
                 })
 
                 # Visualize the profile every 100 meters
