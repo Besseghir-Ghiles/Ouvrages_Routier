@@ -26,6 +26,16 @@ class SegmentConstructor:
         )
         self.filter_PR = f"route='{route_number}'"
         self.PR_route = get_data(self.filter_PR, "BDTOPO_V3:point_de_repere", pr_bounds)
+        pr_290 = self.PR_route[
+            self.PR_route["numero"] == 290
+        ]
+
+        print("\n===== PR 290 =====")
+        print(pr_290[["numero","libelle","cote"]])
+
+        print("\n===== GEOMETRY 290 =====")
+        print(pr_290.geometry.bounds)
+
         print("Nombre PR récupérés IGN :", len(self.PR_route))
         print(self.PR_route[["numero","libelle"]])
         # Créer un index spatial pour accélérer la recherche de points
@@ -409,6 +419,15 @@ class SegmentConstructor:
         cumulative_distance = 0 #wagi  
         all_ouvrages = []
         start_time = time.time()
+        log_file = open(
+            os.path.join(
+                self.output_folder,
+                "debug_profils_selection.log"
+            ),
+            "w",
+            encoding="utf-8"
+        )
+        
         gap_lines = []
         classified_lines = []
 
@@ -584,7 +603,33 @@ class SegmentConstructor:
                                         f"talus_dist_max={closest_row_j['talus_dist_max']}\n"
                                     ) #
 
-                                hauteur = closest_row_j['max_height_difference']
+                                #hauteur = closest_row_j['max_height_difference']
+
+                                left_height = closest_row_j["max_height_difference"]
+                                right_height = closest_row_j["right_height"]
+
+                                left_height = 0 if pd.isna(left_height) else left_height
+                                right_height = 0 if pd.isna(right_height) else right_height
+
+                                if right_height > left_height:
+
+                                    hauteur = right_height
+
+                                    talus_dist_min = closest_row_j["right_dist_min"]
+                                    talus_alt_min = closest_row_j["right_alt_min"]
+
+                                    talus_dist_max = closest_row_j["right_dist_max"]
+                                    talus_alt_max = closest_row_j["right_alt_max"]
+
+                                else:
+
+                                    hauteur = left_height
+
+                                    talus_dist_min = closest_row_j["left_dist_min"]
+                                    talus_alt_min = closest_row_j["left_alt_min"]
+
+                                    talus_dist_max = closest_row_j["left_dist_max"]
+                                    talus_alt_max = closest_row_j["left_alt_max"]
                                 #deb
                                 if pd.isna(hauteur):
 
@@ -606,6 +651,20 @@ class SegmentConstructor:
                                 if pd.notna(hauteur):
                                     hauteurs.append(hauteur)
 
+                                    with open(
+                                        os.path.join(
+                                            self.output_folder,
+                                            "debug_profile_id.txt"
+                                        ),
+                                        "a",
+                                        encoding="utf-8"
+                                    ) as f:
+
+                                        f.write(
+                                            f"\nindex={closest_row_j.name}"
+                                            f" distance_profil={closest_row_j['distance_profil']}"
+    )
+
                                     profils_hauteur_talus.append({
                                     "distance_route": self.central_line.project(
                                         closest_row_j.geometry
@@ -615,11 +674,28 @@ class SegmentConstructor:
                                     "geometry": closest_row_j.geometry,
                                     "profile_id": closest_row_j.name,
 
-                                    "talus_dist_min": closest_row_j["talus_dist_min"],
-                                    "talus_alt_min": closest_row_j["talus_alt_min"],
+                                    #"talus_dist_min": closest_row_j["talus_dist_min"],
+                                    #"talus_alt_min": closest_row_j["talus_alt_min"],
 
-                                    "talus_dist_max": closest_row_j["talus_dist_max"],
-                                    "talus_alt_max": closest_row_j["talus_alt_max"],
+                                    #"talus_dist_max": closest_row_j["talus_dist_max"],
+                                    #"talus_alt_max": closest_row_j["talus_alt_max"],
+
+                                    "talus_dist_min": talus_dist_min,
+                                    "talus_alt_min": talus_alt_min,
+
+                                    "talus_dist_max": talus_dist_max,
+                                    "talus_alt_max": talus_alt_max,
+
+                                    "left_dist_min": closest_row_j["left_dist_min"],
+                                    "left_alt_min": closest_row_j["left_alt_min"],
+                                    "left_dist_max": closest_row_j["left_dist_max"],
+                                    "left_alt_max": closest_row_j["left_alt_max"],
+
+                                    "right_dist_min": closest_row_j["right_dist_min"],
+                                    "right_alt_min": closest_row_j["right_alt_min"],
+                                    "right_dist_max": closest_row_j["right_dist_max"],
+                                    "right_alt_max": closest_row_j["right_alt_max"],
+                                    
                                 })
 
                                 hauteur_centre = (
@@ -747,6 +823,30 @@ class SegmentConstructor:
                                     key=lambda x: x["valeur"]
                                 ) if profils_hauteur_talus else None
 
+                                if profil_talus_max:
+
+                                    log_file.write(
+                                        f"\nPROFILE TALUS MAX\n"
+                                        f"profile_id={profil_talus_max['profile_id']}\n"
+                                        f"distance_route={profil_talus_max['distance_route']}\n"
+                                        f"distance_ouvrage={profil_talus_max['distance_ouvrage']}\n"
+                                        f"valeur={profil_talus_max['valeur']}\n"
+                                    )
+
+                                pr_talus = None
+                                abcisse_talus = None
+
+                                if profil_talus_max:
+
+                                    pr_talus, abcisse_talus, _ = (
+                                        self.compute_PR_reference(
+                                            profil_talus_max["geometry"],
+                                            line,
+                                            current_offset,
+                                            PR_current
+                                        )
+                                    )
+
                                 profil_centre_max = max(
                                     profils_hauteur_centre,
                                     key=lambda x: abs(x["valeur"])
@@ -756,40 +856,6 @@ class SegmentConstructor:
                                     profils_pente,
                                     key=lambda x: x["valeur"]
                                 ) if profils_pente else None
-
-                                #deb
-                                with open(
-                                    os.path.join(
-                                        self.output_folder,
-                                        "debug_talus.txt"
-                                    ),
-                                    "a",
-                                    encoding="utf-8"
-                                ) as f:
-
-                                    f.write(
-                                        "\n========================\n"
-                                    )
-
-                                    f.write(
-                                        f"Ouvrage : {segment_name}\n"
-                                    )
-
-                                    f.write(
-                                        f"Classification : {profile_type}\n"
-                                    )
-
-                                    f.write(
-                                        f"Liste hauteurs : {hauteurs}\n"
-                                    )
-
-                                    f.write(
-                                        f"Nb hauteurs : {len(hauteurs)}\n"
-                                    )
-
-                                    f.write(
-                                        "========================\n"
-                                    )#
 
                                 all_ouvrages.append({
                                     'geometry': segment,
@@ -803,28 +869,16 @@ class SegmentConstructor:
                                     'hauteur_talus_moyenne':sum(hauteurs)/len(hauteurs)if hauteurs else 0,
                                     'profil_talus_route':profil_talus_max["distance_route"]if profil_talus_max else None,
                                     'profil_talus_ouvrage':profil_talus_max["distance_ouvrage"]if profil_talus_max else None,
-
                                     'hauteur_centre_max':profil_centre_max["valeur"]if profil_centre_max else 0,
                                     'profil_centre_route':profil_centre_max["distance_route"]if profil_centre_max else None,
                                     'profil_centre_ouvrage':profil_centre_max["distance_ouvrage"]if profil_centre_max else None,
                                     'hauteur_centre_moyenne':sum(hauteurs_centre)/ len(hauteurs_centre)if hauteurs_centre else 0,
-                                    #'hauteur_max': max(hauteurs) if hauteurs else 0,
-
                                     'pente_max': max(pentes) if pentes else 0,
                                     'profil_pente_route':profil_pente_max["distance_route"]if profil_pente_max else None,
                                     'profil_pente_ouvrage':profil_pente_max["distance_ouvrage"]if profil_pente_max else None,
-                                    #'profil_pente_max':profil_pente_max["distance"]if profil_pente_max else None,
-                                    #'hauteur_moyenne': sum(hauteurs)/len(hauteurs) if hauteurs else 0,
                                     'pente_moyenne': sum(pentes)/len(pentes) if pentes else 0,
-
-                                    #'PR_start': PR_start['libelle'],
-                                    #'PR_end': PR_end['libelle'],
                                     'PR_start': pr_start_lib,
-                                    'PR_end': pr_end_lib,
-
-                                    #'abcisse_start': round(abcisse_start, -1),
-                                    #'abcisse_end': round(abcisse_end, -1),
-                                    
+                                    'PR_end': pr_end_lib,                             
                                     'abcisse_start': round(abcisse_start, -1) if abcisse_start is not None else None,
                                     'abcisse_end': round(abcisse_end, -1) if abcisse_end is not None else None,
                                     'point_debut': point_debut,
@@ -858,6 +912,40 @@ class SegmentConstructor:
                                     "profil_pente_id":
                                     profil_pente_max["profile_id"]
                                     if profil_pente_max else None,
+                                    "profil_talus_PR": pr_talus,
+                                    "profil_talus_abcisse": abcisse_talus,
+
+                                    "left_dist_min":
+                                    profil_talus_max["left_dist_min"]
+                                    if profil_talus_max else None,
+
+                                    "left_alt_min":
+                                    profil_talus_max["left_alt_min"]
+                                    if profil_talus_max else None,
+
+                                    "left_dist_max":
+                                    profil_talus_max["left_dist_max"]
+                                    if profil_talus_max else None,
+
+                                    "left_alt_max":
+                                    profil_talus_max["left_alt_max"]
+                                    if profil_talus_max else None,
+
+                                    "right_dist_min":
+                                    profil_talus_max["right_dist_min"]
+                                    if profil_talus_max else None,
+
+                                    "right_alt_min":
+                                    profil_talus_max["right_alt_min"]
+                                    if profil_talus_max else None,
+
+                                    "right_dist_max":
+                                    profil_talus_max["right_dist_max"]
+                                    if profil_talus_max else None,
+
+                                    "right_alt_max":
+                                    profil_talus_max["right_alt_max"]
+                                    if profil_talus_max else None,
                                 })
                                 
 
@@ -1010,10 +1098,11 @@ class SegmentConstructor:
         end_point = (current_point.x + dx, current_point.y + dy)
 
         return LineString([start_point, end_point])
+
     
     def build_central_line(self, step=5):
 
-        print("Construction ligne centrale propre...")
+        print("Construction ligne centrale par perpendiculaires...")
 
         lines = []
 
@@ -1028,11 +1117,11 @@ class SegmentConstructor:
             elif geom.geom_type == "MultiLineString":
                 lines.extend(list(geom.geoms))
 
-        print("Morceaux LineString trouvés :", len(lines))
+        print("Morceaux trouvés :", len(lines))
 
         if len(lines) < 2:
             raise ValueError(
-                "Pas assez de lignes pour créer la centerline."
+                "Pas assez de lignes pour construire la ligne centrale"
             )
 
         union = unary_union(lines)
@@ -1042,17 +1131,16 @@ class SegmentConstructor:
             for line in lines
         ]
 
-        merged = linemerge(unary_union(snapped_lines))
+        merged = linemerge(
+            unary_union(snapped_lines)
+        )
 
         if merged.geom_type == "LineString":
-            raise ValueError("Une seule voie détectée")
+            raise ValueError(
+                "Une seule chaussée détectée"
+            )
 
         merged_lines = list(merged.geoms)
-
-        print(
-            "Lignes fusionnées :",
-            len(merged_lines)
-        )
 
         merged_lines = sorted(
             merged_lines,
@@ -1063,75 +1151,156 @@ class SegmentConstructor:
         line1 = merged_lines[0]
         line2 = merged_lines[1]
 
-        print("Longueur voie 1 :", line1.length)
-        print("Longueur voie 2 :", line2.length)
+        print(f"Longueur voie 1 : {line1.length:.2f}")
+        print(f"Longueur voie 2 : {line2.length:.2f}")
 
-        if Point(line1.coords[0]).distance(Point(line2.coords[0])) > Point(line1.coords[0]).distance(Point(line2.coords[-1])):
+        if (
+            Point(line1.coords[0]).distance(Point(line2.coords[0]))
+            >
+            Point(line1.coords[0]).distance(Point(line2.coords[-1]))
+        ):
+            line2 = LineString(
+                list(line2.coords)[::-1]
+            )
 
-            line2 = LineString(list(line2.coords)[::-1])
+        points = []
 
+        normal_length = 120
+
+        #n = int(line1.length / step)
         n = int(
             min(
                 line1.length,
                 line2.length
             ) / step
-        )
+)
 
-        points = []
+        last_offset_x = None
+        last_offset_y = None
 
         for i in range(n + 1):
-
             t = i / n
-            p1 = line1.interpolate(
-                t,
-                normalized=True
-            )
-            p2 = line2.interpolate(
-                t,
-                normalized=True
+            p1 = line1.interpolate(t,normalized=True)
+
+            distance_on_line = (t * line1.length)
+            d_before = max(distance_on_line - 5,0)
+            d_after = min(distance_on_line + 5,line1.length)
+
+            p_before = line1.interpolate(d_before)
+            p_after = line1.interpolate(d_after)
+
+            dx = p_after.x - p_before.x
+            dy = p_after.y - p_before.y
+
+            norm = math.sqrt(
+                dx * dx +
+                dy * dy
             )
 
-            points.append(
-                Point(
-                    (p1.x + p2.x) / 2,
-                    (p1.y + p2.y) / 2
-                )
-            )
+            if norm == 0:
+                continue
 
+            dx = dx / norm
+            dy = dy / norm
+
+            nx = -dy
+            ny = dx
+
+            normal_line = LineString([
+                (p1.x - normal_length * nx,p1.y - normal_length * ny),
+                (p1.x + normal_length * nx,p1.y + normal_length * ny)])
+            
+            candidates = []
+            search_offsets = [0,-5, 5,-10, 10,-20, 20]
+
+            for offset in search_offsets:
+
+                test_distance = min(max(distance_on_line + offset, 0), line1.length)
+                test_point = line1.interpolate(test_distance)
+
+                d_before_test = max(test_distance - 5, 0)
+                d_after_test = min(test_distance + 5, line1.length)
+
+                p_before_test = line1.interpolate(d_before_test)
+                p_after_test = line1.interpolate(d_after_test)
+
+                dx_test = p_after_test.x - p_before_test.x
+                dy_test = p_after_test.y - p_before_test.y
+
+                norm_test = math.sqrt(dx_test * dx_test + dy_test * dy_test)
+
+                if norm_test == 0:
+                    continue
+
+                dx_test /= norm_test
+                dy_test /= norm_test
+
+                nx_test = -dy_test
+                ny_test = dx_test
+
+                test_normal = LineString([
+                    (test_point.x -normal_length * nx_test, test_point.y -normal_length * ny_test),
+                    (test_point.x +normal_length * nx_test, test_point.y +normal_length * ny_test)])
+
+                inter = test_normal.intersection(line2)
+
+                if inter.is_empty:
+                    continue
+
+                if inter.geom_type == "Point":
+                    candidates.append(inter)
+
+                elif inter.geom_type == "MultiPoint":
+                    candidates.extend(list(inter.geoms))
+
+                elif inter.geom_type in ["LineString","MultiLineString"]:
+                    d = line2.project(test_point)
+                    candidates.append(line2.interpolate(d))
+
+                elif inter.geom_type == "GeometryCollection":
+                    for g in inter.geoms:
+                        if g.geom_type == "Point":
+                            candidates.append(g)
+
+                if candidates:
+                    break
+
+            if candidates:
+                p2 = min(candidates,key=lambda p: p.distance(p1))
+                last_offset_x = (p2.x - p1.x)
+                last_offset_y = (p2.y - p1.y)
+
+            else:
+                if (last_offset_x is not None and last_offset_y is not None):
+                    p2 = Point(p1.x + last_offset_x,p1.y + last_offset_y)
+                else:
+                    d = line2.project(p1)
+                    p2 = line2.interpolate(d)
+                    last_offset_x = (p2.x - p1.x)
+                    last_offset_y = (p2.y - p1.y)
+
+            middle = Point(
+                (p1.x + p2.x) / 2,(p1.y + p2.y) / 2)
+
+            points.append(middle)
+
+        if len(points) < 2:
+            raise ValueError("Impossible de construire la ligne centrale")
+        
         self.central_line = LineString(points)
 
         pr_valides = self.PR_route.copy()
+        pr_valides["numero"] = (pr_valides["numero"].astype(int))
 
-        pr_valides["numero"] = (
-            pr_valides["numero"]
-            .astype(int)
-        )
+        pr_min = pr_valides.loc[pr_valides["numero"].idxmin()]
+        pr_max = pr_valides.loc[pr_valides["numero"].idxmax()]
 
-        pr_min = pr_valides.loc[
-            pr_valides["numero"].idxmin()
-        ]
-
-        pr_max = pr_valides.loc[
-            pr_valides["numero"].idxmax()
-        ]
-
-        pos_min = self.central_line.project(
-            pr_min.geometry
-        )
-
-        pos_max = self.central_line.project(
-            pr_max.geometry
-        )
+        pos_min = self.central_line.project(pr_min.geometry)
+        pos_max = self.central_line.project(pr_max.geometry)
 
         if pos_min > pos_max:
-
-            self.central_line = LineString(
-                list(self.central_line.coords)[::-1]
-            )
-
-            print(
-                "Ligne centrale inversée pour avoir PR croissant"
-            )
+            self.central_line = LineString(list(self.central_line.coords)[::-1])
+            print("Ligne centrale inversée pour avoir PR croissant")
 
         central_gdf = gpd.GeoDataFrame(
             [{
@@ -1139,30 +1308,14 @@ class SegmentConstructor:
                 "geometry": self.central_line
             }],
             geometry="geometry",
-            crs=self.current_crs
+            crs=self.route.crs
         )
 
-        central_path = os.path.join(
-            self.output_folder,
-            "central_line_debug.gpkg"
-        )
+        central_path = os.path.join(self.output_folder,"central_line_profil.gpkg")
 
-        central_gdf.to_file(
-            central_path,
-            layer="central_line",
-            driver="GPKG"
-        )
-
-        print(
-            "Ligne centrale sauvegardée :",
-            central_path
-        )
-
-        print(
-            "Longueur centrale :",
-            self.central_line.length
-        )
-
+        central_gdf.to_file(central_path,layer="central_line",driver="GPKG")
+        print(f"Ligne centrale sauvegardée : {central_path}")
+        print(f"Longueur centrale : {self.central_line.length:.2f}")
         return self.central_line
 
     def save_output(self, ouvrages_gdf):
