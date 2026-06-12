@@ -32,7 +32,7 @@ class DrawSelectedProfiles:
 
         self.centerline_path = os.path.join(
             output_folder,
-            "central_line_debug.gpkg"
+            "central_line_profil.gpkg"
         )
 
         self.out_dir = os.path.join(
@@ -54,6 +54,29 @@ class DrawSelectedProfiles:
             ),
             layer="points"
         )
+
+        self.perpendicular_profiles = gpd.read_file(
+            os.path.join(
+                output_folder,
+                "perpendicular_profil.gpkg"
+            )
+)
+
+        with open(
+            os.path.join(output_folder, "debug_classified_profiles.txt"),
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            f.write("===== COLONNES =====\n")
+            f.write(
+                str(self.classified_profiles.columns.tolist())
+            )
+
+            f.write("\n\n===== 20 PREMIERES LIGNES =====\n")
+            f.write(
+                self.classified_profiles.head(20).to_string()
+            )
 
         self.lines_selected = gpd.read_file(
             self.lines_path
@@ -284,9 +307,26 @@ class DrawSelectedProfiles:
             return
 
         try:
+
+            print("profile_id demandé :", profile_id)
+
             profile_row = self.classified_profiles.loc[
                 int(profile_id)
             ]
+
+            center_distance = profile_row[
+                "center_distance"
+            ]
+            print(
+                "profile_id =", profile_id,
+                "center_distance =", center_distance
+            )
+
+            distance_profil = profile_row["distance_profil"]
+
+            perpendicular_row = self.perpendicular_profiles[
+                self.perpendicular_profiles["distance"] == distance_profil
+            ].iloc[0]
 
             average_route = profile_row[
                 "average_height_route"
@@ -304,45 +344,30 @@ class DrawSelectedProfiles:
                 "reg_intercept"
             ]
         except:
+
+            with open(
+                os.path.join(
+                    self.output_folder,
+                    "debug_draw.txt"
+                ),
+                "a",
+                encoding="utf-8"
+            ) as f:
+
+                f.write(
+                    f"\nprofile_id demandé={profile_id}"
+                    f"\nindex min={self.classified_profiles.index.min()}"
+                    f"\nindex max={self.classified_profiles.index.max()}"
+                    f"\ncolonnes={list(self.classified_profiles.columns)}"
+                    f"\n----------------------"
+                )
+            
             print(
                 f"Profil introuvable : {profile_id}"
             )
             return
 
-        point_on_profile = profile_row.geometry
-
-        distances_lines = self.lines_selected.geometry.distance(
-            point_on_profile
-        )
-
-        nearest_line = self.lines_selected.iloc[
-            distances_lines.idxmin()
-        ]
-
-        line = nearest_line.geometry
-
-        if line.geom_type == "MultiLineString":
-            line = list(line.geoms)[0]
-
-        distance_on_line = line.project(
-            point_on_profile
-        )
-
-        perpendicular_line = (
-            self.calculate_perpendicular_line_from_line(
-                distance_on_line,
-                line
-            )
-        )
-
-        (
-            ref_route_start,
-            ref_route_end,
-            ref_terrain_start1,
-            ref_terrain_end1,
-            ref_terrain_start2,
-            ref_terrain_end2
-        ) = self.determine_routewidth(nearest_line)
+        perpendicular_line = perpendicular_row.geometry
 
         distances = []
         elevations = []
@@ -391,41 +416,19 @@ class DrawSelectedProfiles:
                 linewidth=2,
                 label="Terrain naturel par régression"
             )
-
+        
         plt.axvline(
-            x=60,
+            x=center_distance,
             linestyle=":",
             linewidth=2,
             label="Centre route"
         )
 
-        """
-        plt.axvspan(
-            ref_route_start,
-            ref_route_end,
-            alpha=0.15,
-            label="Zone route"
-        )
-
-        plt.axvspan(
-            ref_terrain_start1,
-            ref_terrain_end1,
-            alpha=0.10,
-            label="Points TN régression"
-        )
-
-        """
-        
-        plt.axvspan(
-            ref_terrain_start2,
-            ref_terrain_end2,
-            alpha=0.10
-        )
 
         if average_route is not None:
 
             plt.scatter(
-                [60],
+                [center_distance],
                 [average_route],
                 s=80,
                 label="Altitude moyenne route"
@@ -434,7 +437,7 @@ class DrawSelectedProfiles:
         if z_tn_center is not None:
 
             plt.scatter(
-                [60],
+                [center_distance],
                 [z_tn_center],
                 s=80,
                 label="TN au centre"
@@ -455,63 +458,73 @@ class DrawSelectedProfiles:
         )
 
         title = (
-            f"{row['nom']} | {profile_kind}\n"
+            f"{self.route_number}"
+            f"_PR{int(row['profil_talus_PR'])}"
+            f"+{int(round(row['profil_talus_abcisse'], -1))}"
+            #f"_{row['chaussee']}"
+            f" | {profile_kind}"
+            #f"{row['nom']} | {profile_kind}\n"
             f"{row['PR_start']}+{row['abcisse_start']} → "
             f"{row['PR_end']}+{row['abcisse_end']}\n"
             f"Classe={row['classification']} | "
             f"H talus={row['hauteur_talus_max']:.2f} m | "
-            f"H centre={row['hauteur_centre_max']:.2f} m | "
-            f"Pente max={row['pente_max']:.2f}"
+            #f"H centre={row['hauteur_centre_max']:.2f} m | "
+            #f"Pente max={row['pente_max']:.2f}"
         )
-
-        # ==========================================
         # VISUALISATION TALUS
-        # ==========================================
+        if profile_kind == "talus_max":
 
-        if (
-            profile_kind == "talus_max"
-            and "talus_dist_min" in row.index
-            and pd.notna(row["talus_dist_min"])
-        ):
+            # TALUS GAUCHE
+            if pd.notna(row["left_dist_min"]):
 
-            x_min = row["talus_dist_min"]
-            z_min = row["talus_alt_min"]
+                plt.scatter(
+                    [row["left_dist_min"]],
+                    [row["left_alt_min"]],
+                    s=180,
+                    marker="o",
+                    #label="Talus gauche bas"
+                )
 
-            x_max = row["talus_dist_max"]
-            z_max = row["talus_alt_max"]
-            
+                plt.scatter(
+                    [row["left_dist_max"]],
+                    [row["left_alt_max"]],
+                    s=180,
+                    marker="o",
+                    #label="Talus gauche haut"
+                )
 
-            plt.scatter(
-                [x_min],
-                [z_min],
-                s=180,
-                marker="o",
-                label=f"Point bas talus ({z_min:.2f} m)"
-            )
+                plt.plot(
+                    [row["left_dist_min"], row["left_dist_max"]],
+                    [row["left_alt_min"], row["left_alt_max"]],
+                    linewidth=4,
+                    label="Talus gauche"
+                )
 
-            plt.scatter(
-                [x_max],
-                [z_max],
-                s=180,
-                marker="o",
-                label=f"Point haut talus ({z_max:.2f} m)"
-            )
+            # TALUS DROIT
+            if pd.notna(row["right_dist_min"]):
 
-            plt.plot(
-                [x_min, x_max],
-                [z_min, z_max],
-                linewidth=4,
-                label=f"H talus = {row['hauteur_talus_max']:.2f} m"
-            )
+                plt.scatter(
+                    [row["right_dist_min"]],
+                    [row["right_alt_min"]],
+                    s=180,
+                    marker="s",
+                    #label="Talus droit bas"
+                )
 
-            plt.annotate(
-                f"H = {row['hauteur_talus_max']:.2f} m",
-                (
-                    (x_min + x_max) / 2,
-                    (z_min + z_max) / 2
-                ),
-                fontsize=12
-            )
+                plt.scatter(
+                    [row["right_dist_max"]],
+                    [row["right_alt_max"]],
+                    s=180,
+                    marker="s",
+                    #label="Talus droit haut"
+                )
+
+                plt.plot(
+                    [row["right_dist_min"], row["right_dist_max"]],
+                    [row["right_alt_min"], row["right_alt_max"]],
+                    linewidth=4,
+                    label="Talus droit"
+                )
 
             plt.title(title)
 
@@ -568,20 +581,6 @@ class DrawSelectedProfiles:
                 row["profil_talus_id"]
             )
 
-            """
-            self.draw_one_profile(
-                row,
-                "centre_max",
-                row["profil_centre_id"]
-            )
-
-             
-            self.draw_one_profile(
-                row,
-                "pente_max",
-                row["profil_pente_id"]
-            )
-            """
 
             count += 1
 

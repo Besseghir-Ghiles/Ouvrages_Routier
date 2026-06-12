@@ -2,8 +2,9 @@ import geopandas as gpd
 import os
 import pandas as pd
 from get_data_functions import get_ponts_from_geom
-from openpyxl.styles import Font
-from openpyxl.styles import Alignment
+from openpyxl.styles import Font,Alignment,PatternFill
+
+
 
 class OuvragesSelector:
     def __init__(self, ouvrages_gdf, output_folder, route_number, lines_selected):
@@ -70,6 +71,17 @@ class OuvragesSelector:
 
                             'profil_talus_ouvrage':
                             intersecting.iloc[0]['profil_talus_ouvrage'],
+                            'profil_talus_route':
+                            intersecting.iloc[0]['profil_talus_route'],
+
+                            'profil_talus_ouvrage':
+                            intersecting.iloc[0]['profil_talus_ouvrage'],
+
+                            'profil_talus_PR':
+                            intersecting.iloc[0]['profil_talus_PR'],
+
+                            'profil_talus_abcisse':
+                            intersecting.iloc[0]['profil_talus_abcisse'],
 
                             'profil_centre_route':
                             intersecting.iloc[0]['profil_centre_route'],
@@ -102,6 +114,30 @@ class OuvragesSelector:
 
                             'talus_alt_max':
                             intersecting.iloc[0]['talus_alt_max'],
+
+                            "left_dist_min":
+                            intersecting.iloc[0]["left_dist_min"],
+
+                            "left_alt_min":
+                            intersecting.iloc[0]["left_alt_min"],
+
+                            "left_dist_max":
+                            intersecting.iloc[0]["left_dist_max"],
+
+                            "left_alt_max":
+                            intersecting.iloc[0]["left_alt_max"],
+
+                            "right_dist_min":
+                            intersecting.iloc[0]["right_dist_min"],
+
+                            "right_alt_min":
+                            intersecting.iloc[0]["right_alt_min"],
+
+                            "right_dist_max":
+                            intersecting.iloc[0]["right_dist_max"],
+
+                            "right_alt_max":
+                            intersecting.iloc[0]["right_alt_max"],
                                                     }
                         merged_segments.append(merged_segment)
                 
@@ -265,44 +301,38 @@ class OuvragesSelector:
             sep=";"
         )
 
+        with open(
+            os.path.join(
+                self.output_folder,
+                "debug_selected_ouvrages.txt"
+            ),
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            for _, row in selected_ouvrages.iterrows():
+
+                f.write(
+                    f"\n=====================================\n"
+                    f"OUVRAGE={row['nom']}\n"
+                    f"classification={row['classification']}\n"
+                    f"PR_start={row['PR_start']}\n"
+                    f"PR_end={row['PR_end']}\n"
+                    f"hauteur_talus_max={row['hauteur_talus_max']}\n"
+                    f"hauteur_centre_max={row['hauteur_centre_max']}\n"
+                    f"pente_max={row['pente_max']}\n"
+                    f"profil_talus_id={row['profil_talus_id']}\n"
+                    f"talus_dist_min={row['talus_dist_min']}\n"
+                    f"talus_dist_max={row['talus_dist_max']}\n"
+                    f"left_dist_min={row['left_dist_min']}\n"
+                    f"left_dist_max={row['left_dist_max']}\n"
+                    f"right_dist_min={row['right_dist_min']}\n"
+                    f"right_dist_max={row['right_dist_max']}\n"
+                    f"=====================================\n"
+                )
+
         return selected_ouvrages
     
-    """#   
-    
-    def save_output(self, selected_gdf):
-        # Create output folder if it doesn't exist
-        os.makedirs(self.output_folder, exist_ok=True)
-
-        selected_gdf=selected_gdf.copy()
-
-        cols_to_round=[
-            "length",
-            "hauteur_max",
-            "pente_max",
-            "hauteur_moyenne",
-            "pente_moyenne"
-        ]
-
-        for col in cols_to_round:
-            if col in selected_gdf.columns:
-                selected_gdf[col]=selected_gdf[col].round(3)
-                selected_gdf[col]=selected_gdf[col].astype(float)
-
-
-        output_file = os.path.join(self.output_folder, "selected_ouvrages.gpkg")
-        selected_gdf.to_file(output_file, driver='GPKG', layer='ouvrages') 
-        # ponts surface 
-        self.ponts_gdf.to_file(
-            os.path.join(self.output_folder, "ponts_surface.gpkg"),
-            driver='GPKG'
-        )
-
-        #  ponts lineaire 
-        self.ponts2_gdf.to_file(
-            os.path.join(self.output_folder, "ponts_lineaire.gpkg"),
-            driver='GPKG'
-        )
-    """
 
     def save_output(self, selected_gdf):
 
@@ -354,33 +384,27 @@ class OuvragesSelector:
             errors="ignore"
         )
 
+
+
+        excel_df.insert(0, "id", range(1, len(excel_df) + 1))
+        
+
         colonnes = [
+            "id",
+            "route",
             "nom",
             "classification",
-            #"chaussee",
             "PR_start",
             "abcisse_start",
             "PR_end",
             "abcisse_end",
             "length",
-            #"hauteur_max",
-            #"hauteur_moyenne",
             "hauteur_talus_max",
-            #"profil_talus_ouvrage",
-            #"profil_pente_ouvrage",
             "hauteur_talus_moyenne",
             "hauteur_centre_max",
-            #"profil_centre_ouvrage",
-            #"profil_centre_route",
             "hauteur_centre_moyenne",
             "pente_max",
-            #"profil_talus_route",
-            #"profil_pente_route",
             "pente_moyenne",
-            #"profil_talus_id",
-            #"profil_centre_id",
-            #"profil_pente_id",
-            #"route"
         ]
 
         excel_df["PR_start"] = (
@@ -435,6 +459,28 @@ class OuvragesSelector:
                     vertical='center'
                 )
 
+            fills = {
+                "remblai": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),
+                "deblai": PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid"),
+                "rasant": PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"),
+            }
+
+            classification_col = None
+
+            for cell in worksheet[1]:
+                if cell.value == "classification":
+                    classification_col = cell.column
+                    break
+
+            if classification_col is not None:
+                for row in worksheet.iter_rows(min_row=2):
+                    classe = row[classification_col - 1].value
+                    fill = fills.get(str(classe).lower())
+
+                    if fill:
+                        for cell in row:
+                            cell.fill = fill
+
             # Ajuster largeur automatique
             for column_cells in worksheet.columns:
 
@@ -458,19 +504,8 @@ class OuvragesSelector:
                     except:
                         pass
 
-                # largeur plus confortable
-                adjusted_width = (
-                    (max_length + 4)
-                    * 1.5
-                )
 
-                adjusted_width = max(
-                    15,
-                    min(
-                        adjusted_width,
-                        35
-                    )
-                )
+                adjusted_width = max(10, min(max_length + 2, 22))
 
                 worksheet.column_dimensions[
                     column

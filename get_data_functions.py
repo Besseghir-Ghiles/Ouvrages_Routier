@@ -25,8 +25,18 @@ def get_data(filter, type_of_data, bbox):
             content = response.json()
             
             # Create GeoDataFrame from the GeoJSON
-            gdf = gpd.GeoDataFrame.from_features(content['features'])            
-            # Explicitly set the CRS to Lambert-93
+            gdf = gpd.GeoDataFrame.from_features(content['features'])   
+            if type_of_data == "BDTOPO_V3:point_de_repere":
+
+                print("\n===== AVANT CLIP =====")
+
+                if "numero" in gdf.columns:
+                    print(
+                        gdf[
+                            gdf["numero"].astype(str) == "290"
+                        ][["numero","libelle","cote"]]
+                    )         
+                        # Explicitly set the CRS to Lambert-93
             gdf.set_crs(epsg=2154, inplace=True)
 
             # Use bounding box to filter relevant sections
@@ -50,10 +60,10 @@ def get_data(filter, type_of_data, bbox):
                 print("BBox originale:", bbox)
 
                 minx, miny, maxx, maxy = bbox
-                minx += 100
-                miny += 100
-                maxx -= 100
-                maxy -= 100
+                minx += 50
+                miny += 50
+                maxx -= 50
+                maxy -= 50
 
                 print("BBox modifiée:", (minx, miny, maxx, maxy))
                 if minx >= maxx or miny >= maxy:
@@ -66,7 +76,19 @@ def get_data(filter, type_of_data, bbox):
 
                     bbox_geom = box(minx, miny, maxx, maxy)
 
+
+
                     gdf = gpd.clip(gdf, bbox_geom)
+
+                    if type_of_data == "BDTOPO_V3:point_de_repere":
+
+                        print("\n===== APRES CLIP =====")
+
+                        print(
+                            gdf[
+                                gdf["numero"].astype(str) == "290"
+                            ][["numero","libelle","cote"]]
+                        )
 
                     print("Nombre APRÈS clip:", len(gdf))
                     print("Bounds APRÈS:", gdf.total_bounds)
