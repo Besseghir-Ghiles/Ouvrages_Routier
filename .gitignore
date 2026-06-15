@@ -4,5 +4,6 @@ data/
 
 bounding_box1.gpkg
 bounding_box2.gpkg
+Inventaire/
 
 __pycache__/

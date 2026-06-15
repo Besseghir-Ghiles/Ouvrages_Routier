@@ -397,7 +397,12 @@ class SegmentConstructor:
         )
         
         self.projected_PR_side=self.project_PR_on_side()
+        self.projected_PR_side = self.projected_PR_side[self.projected_PR_side["numero"].apply(self.is_convertible_to_int)].copy()
+
         self.projected_PR=self.project_PR_on_route()
+
+        self.projected_PR = self.projected_PR[self.projected_PR["numero"].apply(self.is_convertible_to_int)].copy()
+        
         self.projected_PR["cote"]=self.projected_PR["cote"].astype(str).str.strip().str.upper()
         self.projected_PR["numero"]=self.projected_PR["numero"].astype(int)
         self.projected_PR=self.projected_PR.sort_values(
@@ -1290,6 +1295,9 @@ class SegmentConstructor:
         self.central_line = LineString(points)
 
         pr_valides = self.PR_route.copy()
+
+        pr_valides = pr_valides[pr_valides["numero"].apply(self.is_convertible_to_int)].copy()
+
         pr_valides["numero"] = (pr_valides["numero"].astype(int))
 
         pr_min = pr_valides.loc[pr_valides["numero"].idxmin()]
