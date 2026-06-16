@@ -26,6 +26,22 @@ class SegmentConstructor:
         )
         self.filter_PR = f"route='{route_number}'"
         self.PR_route = get_data(self.filter_PR, "BDTOPO_V3:point_de_repere", pr_bounds)
+
+        # supprimer les CS
+        self.PR_route = self.PR_route[
+            ~self.PR_route["libelle"]
+            .astype(str)
+            .str.startswith("CS")
+        ].copy()
+
+        # supprimer FS / DS
+        self.PR_route = self.PR_route[
+            self.PR_route["numero"].apply(
+                self.is_convertible_to_int
+            )
+        ].copy()
+
+        
         pr_290 = self.PR_route[
             self.PR_route["numero"] == 290
         ]

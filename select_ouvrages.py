@@ -200,10 +200,11 @@ class OuvragesSelector:
         remblai=selected_ouvrages[selected_ouvrages['classification']=="remblai"]
         deblai=selected_ouvrages[selected_ouvrages['classification']=="deblai"]
         rasant=selected_ouvrages[selected_ouvrages['classification']=="rasant"]
+        mixte = selected_ouvrages[selected_ouvrages['classification'] == "mixte"]
 
         merged_results=[]
 
-        for classe_gdf in [remblai,deblai,rasant]:
+        for classe_gdf in [remblai,deblai,rasant,mixte]:
 
             for chaussee in ["D","G"]:
 
@@ -463,6 +464,7 @@ class OuvragesSelector:
                 "remblai": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),
                 "deblai": PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid"),
                 "rasant": PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"),
+                "mixte":PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),
             }
 
             classification_col = None
