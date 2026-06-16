@@ -2083,6 +2083,7 @@ class ProfileAnalyzer:
 
             old_profile_type = profile_type
 
+            """
             if profile_type == "rasant":
 
                 max_talus = max(
@@ -2099,7 +2100,34 @@ class ProfileAnalyzer:
                     elif hauteur_centre < 0:
 
                         profile_type = "deblai"
+            """
+            if profile_type == "rasant":
 
+                left_class = "rasant"
+                right_class = "rasant"
+
+                if left_height_real is not None and left_height_real >= 2:
+                    left_class = "remblai"
+
+                elif left_height_real is not None and left_height_real <= -2:
+                    left_class = "deblai"
+
+
+                if right_height_real is not None and right_height_real >= 2:
+                    right_class = "remblai"
+
+                elif right_height_real is not None and right_height_real <= -2:
+                    right_class = "deblai"
+
+
+                if left_class == right_class:
+
+                    profile_type = left_class
+
+                else:
+
+                    profile_type = "mixte"
+                """    
                 if old_profile_type != profile_type:
 
                     with open(
@@ -2117,7 +2145,8 @@ class ProfileAnalyzer:
                             f"centre={hauteur_centre:.2f} "
                             f"{old_profile_type}->{profile_type}\n"
                         )
-        
+                """
+                
             if calculation_points:
                 all_calculation_points.extend(calculation_points)
 
